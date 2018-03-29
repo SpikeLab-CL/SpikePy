@@ -159,3 +159,9 @@ vignettes/*.pdf
 .Rproj.user
 
 \.idea/
+
+*.csv
+
+*.zip
+
+*.jar
