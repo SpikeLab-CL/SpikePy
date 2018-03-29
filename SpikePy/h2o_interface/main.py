@@ -13,6 +13,8 @@ from typing import Union
 from sklearn.preprocessing import LabelEncoder
 import h2o
 from lime.lime_tabular import LimeTabularExplainer
+import os
+import os.path
 
 
 # 1. Lime extension for in memory model
@@ -124,3 +126,108 @@ class H2oPredictProbaWrapper:
         # each class
         self.predictions = self.predictions.iloc[:, 1:].as_matrix()
         return self.predictions
+
+
+class H2oOutOfMemoryWrapper:
+    """
+        Wrapper para poder hacer predicciones a partir de un modelo de h2o (MOJO y h2o.genmodel.jar),
+        funciona sin la necesidad de levantar h2o, para esto se debe disponer del siguiente directorio con
+        los siguientes archivos:
+            -H2OLimeWrapper.py
+                -/input Carpeta con el documento de entrada
+                -/output Carpeta con resultados de predicciones
+                -/train_data Carpeta con el archivo que contiene los datos de entrenamiento
+                -/models: Carpeta contenedora del MOJO y h2o.genmodel.jar
+
+        Args:
+            input_name (str): Nombre del archivo con los datos (solamente Xs) para hacer la prediccion.
+            output_name (str): Nombre del archivo para guardar el resultado de las predicciones.
+            train_data (str): Nombre del archivo con los datos (solamente Xs) con los que se entrenó el modelo.
+            model_name (str): Nombre del modelo MOJO
+    """
+
+    def __init__(self, input_name, output_name, train_data, model_name):
+        self.train_data = train_data
+        self.input_name = input_name
+        self.output_name = output_name
+        self.model_name = model_name
+        self.work_directory = os.getcwd()
+        self.checkFiles()
+
+        train_sample = pd.read_csv("{0}/train_data/{1}".format(self.work_directory, self.train_data),
+                                   nrows=5)
+        self.x_vars = train_sample.columns
+
+    def checkFiles(self):
+        """
+            Returns:
+                None: Checkea que los archivos necesarios se encuentren en las carpetas correspondientes
+        """
+        if os.path.isfile("models/{0}".format(self.model_name)) is False:
+            raise ValueError("No se encuentra el modelo {0}, \
+                              en la carpeta models".format(self.model_name))
+        if os.path.isfile("input/{0}".format(self.input_name)) is False:
+            raise ValueError("No se encuentra el archivo {0}, \
+                              en la carpeta models".format(self.model_name))
+        if os.path.isfile("train_data/{0}".format(self.train_data)) is False:
+            raise ValueError("No se encuentra el archivo {0}, \
+                              en la carpeta train_data".format(self.train_data))
+
+    def get_train_data(self):
+        """
+            Returns:
+                pandas.DataFrame: Dataframe con los datos de entrenamiento del modelo
+        """
+        return pd.read_csv("{0}/train_data/{1}".format(self.work_directory, self.train_data))
+
+    def make_predictions(self, input_name):
+        """
+            Args:
+                input_name (str): Nombre del archivo con los datos a predecir
+            Returns:
+                pandas.DataFrame: Probabilidades de cada instancia
+        """
+        cmd = "java -cp {0}/models/h2o-genmodel.jar hex.genmodel.tools.PredictCsv  \
+               --header --mojo {0}/models/{1} --input {0}/input/{3} \
+               --output {0}/output/{2} --decimal".format(self.work_directory,
+                                                         self.model_name,
+                                                         self.output_name,
+                                                         input_name)
+        os.system(cmd)
+        return self.load_results()
+
+    def load_results(self):
+        """
+            Returns:
+                pandas.DataFrame: Dataframe con los resultados de la prediccion de los datos de entrada
+        """
+        predictions = pd.read_csv("{0}/output/{1}".format(self.work_directory, self.output_name))
+        return predictions
+
+
+    def get_input_data(self):
+        """
+            Returns:
+                pandas.DataFrame: Dataframe con los datos a predecir
+        """
+        return pd.read_csv("{0}/input/{1}".format(self.work_directory, self.input_name))
+
+    def limePredictions(self, data):
+        """
+            Args:
+                data: (np.array): Arreglo de datos a predecir
+            Returns:
+                np.array : Probabilidades de cada instancia generada por LIME
+        """
+        frame = pd.DataFrame(data=data, columns=self.x_vars)
+        frame.to_csv("{0}/input/parcial_predictions.csv".format(self.work_directory), sep=',')
+        pred = self.make_predictions(input_name="parcial_predictions.csv")
+
+        shape_tuple = np.shape(pred)
+        if len(shape_tuple) == 1:
+            pred = pred.reshape(1, -1)
+
+        pred = pred.iloc[:, 1:].as_matrix()
+        pred[-1][1] = 1 - pred[-1][0]
+        return pred
+
