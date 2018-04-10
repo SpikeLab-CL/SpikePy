@@ -43,10 +43,15 @@ class LimeDF:
         List of names of categorical columns
     y_var : string
         Name Y variable (aka target)
+    y_categorical: bool
+        Whether Y is categorical or not
+    label_encodings : dict
+        Label encodings for categorical vars (for export). Doesn't handle new categories
     """
 
     def __init__(self, df: pd.DataFrame, x_vars: Union[list, np.array],
-                 categorical_cols: Union[list, np.array], y_var: str):
+                 categorical_cols: Union[list, np.array], y_var: str,
+                 y_categorical: bool, label_encodings=dict()):
         df[categorical_cols] = df[categorical_cols].apply(lambda x: x.astype('object'))
         self.df = df
         self.categorical_cols = categorical_cols
@@ -59,13 +64,16 @@ class LimeDF:
         self.y_class_names = None
         self.categorical_names_dict = None
         self.y_labels = None
+        self.y_categorical = y_categorical
+        self.label_encodings = label_encodings
 
     def to_numpy_array(self):
-        # Handle Y
-        le = LabelEncoder()
-        self.y_labels = le.fit_transform(self.df[self.y_var])
-        self.y_class_names = le.classes_
+        if self.y_categorical:
+            le = LabelEncoder()
+            self.y_labels = le.fit_transform(self.df[self.y_var])
+            self.y_class_names = le.classes_
 
+        self.label_encodings = dict()
         # Handle categorical Xs
         data = self.df[self.x_vars].as_matrix()
         self.categorical_names_dict = {}
@@ -74,6 +82,10 @@ class LimeDF:
             le = LabelEncoder()
             data[:, feature_ind] = le.fit_transform(data[:, feature_ind].astype(str))
             self.categorical_names_dict[feature_ind] = le.classes_
+
+            # Save label encoding
+            col_name = self.x_vars[feature_ind]
+            self.label_encodings[col_name] = le
 
         return data.astype(float)
 
@@ -94,12 +106,17 @@ class LimeDF:
         :param kwargs: kernel_width, verbose, etc
         :return: LimeTabularExplainer object
         """
-        return LimeTabularExplainer(self.from_h2o_to_numpy_array(h2o_train_frame),
+
+        # TODO also handle Y being float or int
+        general_explainer = LimeTabularExplainer(self.from_h2o_to_numpy_array(h2o_train_frame),
                                     feature_names=self.x_vars,
                                     class_names=self.y_class_names,
                                     categorical_features=self.categorical_cols_ind,
                                     categorical_names=self.categorical_names_dict,
                                     **kwargs)
+
+        if self.y_categorical:
+            return general_explainer
 
 
 class H2oPredictProbaWrapper:
@@ -130,23 +147,32 @@ class H2oPredictProbaWrapper:
 
 class H2oOutOfMemoryWrapper:
     """
-        Wrapper para poder hacer predicciones a partir de un modelo de h2o (MOJO y h2o.genmodel.jar),
-        funciona sin la necesidad de levantar h2o, para esto se debe disponer del siguiente directorio con
-        los siguientes archivos:
-            -H2OLimeWrapper.py
-                -/input Carpeta con el documento de entrada
-                -/output Carpeta con resultados de predicciones
-                -/train_data Carpeta con el archivo que contiene los datos de entrenamiento
-                -/models: Carpeta contenedora del MOJO y h2o.genmodel.jar
+    Wrapper para poder hacer predicciones a partir de un modelo de h2o (MOJO y h2o.genmodel.jar),
+    funciona sin la necesidad de levantar h2o, para esto se debe disponer del siguiente directorio con
+    los siguientes archivos:
+        -H2OLimeWrapper.py
+            -/input Carpeta con el documento de entrada
+            -/output Carpeta con resultados de predicciones
+            -/train_data Carpeta con el archivo que contiene los datos de entrenamiento
+            -/models: Carpeta contenedora del MOJO y h2o.genmodel.jar
 
-        Args:
-            input_name (str): Nombre del archivo con los datos (solamente Xs) para hacer la prediccion.
-            output_name (str): Nombre del archivo para guardar el resultado de las predicciones.
-            train_data (str): Nombre del archivo con los datos (solamente Xs) con los que se entrenó el modelo.
-            model_name (str): Nombre del modelo MOJO
+    Args:
+        input_name (str): Nombre del archivo con los datos (solamente Xs) para hacer la prediccion.
+        output_name (str): Nombre del archivo para guardar el resultado de las predicciones.
+        train_data (str): Nombre del archivo con los datos (solamente Xs) con los que se entrenó el modelo.
+        model_name (str): Nombre del modelo MOJO
+        :label_encodings: dict . default None : Dictionary of label encodings for X and Y variables
     """
 
-    def __init__(self, input_name, output_name, train_data, model_name):
+    def __init__(self, input_name, output_name, train_data, model_name, label_encodings=None):
+        """
+        :param input_name:
+        :param output_name:
+        :param train_data:
+        :param model_name:
+        :param label_encodings:
+        :type label_encodings: dict
+        """
         self.train_data = train_data
         self.input_name = input_name
         self.output_name = output_name
@@ -157,6 +183,7 @@ class H2oOutOfMemoryWrapper:
         train_sample = pd.read_csv("{0}/train_data/{1}".format(self.work_directory, self.train_data),
                                    nrows=5)
         self.x_vars = train_sample.columns
+        self.label_encodings = label_encodings
 
     def checkFiles(self):
         """
@@ -204,13 +231,18 @@ class H2oOutOfMemoryWrapper:
         predictions = pd.read_csv("{0}/output/{1}".format(self.work_directory, self.output_name))
         return predictions
 
-
-    def get_input_data(self):
+    def get_input_data(self, encode_categories=False):
         """
             Returns:
                 pandas.DataFrame: Dataframe con los datos a predecir
         """
-        return pd.read_csv("{0}/input/{1}".format(self.work_directory, self.input_name))
+        raw_df = pd.read_csv("{0}/input/{1}".format(self.work_directory, self.input_name))
+        if encode_categories:
+            # Use label encodings for the categorical Xs
+            for col_name, col_encoder in self.label_encodings.items():
+                raw_df[col_name] = col_encoder.transform(raw_df[col_name].astype(str))
+
+        return raw_df
 
     def limePredictions(self, data):
         """
