@@ -72,6 +72,9 @@ class LimeDF:
             le = LabelEncoder()
             self.y_labels = le.fit_transform(self.df[self.y_var])
             self.y_class_names = le.classes_
+        else:
+            # Y_labels is just the raw y_var
+            self.y_labels = self.df[self.y_var].values
 
         self.label_encodings = dict()
         # Handle categorical Xs
@@ -101,35 +104,48 @@ class LimeDF:
 
     def tabular_explainer(self, h2o_train_frame, **kwargs):
         """
-
         :param h2o_train_frame:
         :param kwargs: kernel_width, verbose, etc
+        :type kwargs: dict
         :return: LimeTabularExplainer object
         """
 
-        # TODO also handle Y being float or int
-        general_explainer = LimeTabularExplainer(self.from_h2o_to_numpy_array(h2o_train_frame),
+        if self.y_categorical:
+            class_names = self.y_class_names
+            mode = "classification"
+        else:
+            class_names = [self.y_var]  # Not sure this one matters or not
+            mode = "regression"
+
+        return LimeTabularExplainer(self.from_h2o_to_numpy_array(h2o_train_frame),
                                     feature_names=self.x_vars,
-                                    class_names=self.y_class_names,
+                                    class_names=class_names,
                                     categorical_features=self.categorical_cols_ind,
                                     categorical_names=self.categorical_names_dict,
-                                    **kwargs)
-
-        if self.y_categorical:
-            return general_explainer
+                                    mode=mode, **kwargs)
 
 
 class H2oPredictProbaWrapper:
-    # drf is the h2o distributed random forest object, the column_names is the
-    # labels of the X values
-    def __init__(self, model, column_names):
+    """
+    model : h2o model
+    mode : "classification" or "regression"
+    """
+    def __init__(self, model, column_names, mode: str):
         self.model = model
         self.column_names = column_names
+        self.mode = mode
+
+        #Place-holders
+        self.pandas_df = None
+        self.h2o_df = None
+        self.predictions = None
 
     def predict_proba(self, this_array):
         # If we have just 1 row of data we need to reshape it
         shape_tuple = np.shape(this_array)
+        one_observation = False
         if len(shape_tuple) == 1:
+            one_observation = True
             this_array = this_array.reshape(1, -1)
 
         # We convert the numpy array that Lime sends to a pandas dataframe and
@@ -139,9 +155,20 @@ class H2oPredictProbaWrapper:
 
         # Predict with the h2o drf
         self.predictions = self.model.predict(self.h2o_df).as_data_frame()
-        # the first column is the class labels, the rest are probabilities for
-        # each class
-        self.predictions = self.predictions.iloc[:, 1:].as_matrix()
+
+        if self.mode == "classification":
+            # the first column is the class labels, the rest are probabilities for
+            # each class
+            self.predictions = self.predictions.iloc[:, 1:].as_matrix()
+        elif self.mode == "regression":
+            if one_observation:
+                self.predictions = self.predictions.values[0]
+            else:
+                #TODO this still doesn't work
+                self.predictions = self.predictions.values[:, 0]
+        else:
+            raise AttributeError("Mode must be either classification or regression")
+
         return self.predictions
 
 
@@ -207,6 +234,7 @@ class H2oOutOfMemoryWrapper:
         """
         return pd.read_csv("{0}/train_data/{1}".format(self.work_directory, self.train_data))
 
+    #TODO check if code changes if Y is float
     def make_predictions(self, input_name):
         """
             Args:
@@ -244,6 +272,7 @@ class H2oOutOfMemoryWrapper:
 
         return raw_df
 
+    #TODO handle possibility of y being float or int
     def limePredictions(self, data):
         """
             Args:
@@ -262,4 +291,3 @@ class H2oOutOfMemoryWrapper:
         pred = pred.iloc[:, 1:].as_matrix()
         pred[-1][1] = 1 - pred[-1][0]
         return pred
-
