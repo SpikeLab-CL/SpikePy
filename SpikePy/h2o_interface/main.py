@@ -40,7 +40,7 @@ class LimeDF:
     x_vars : Union[list, np.array]
         List of all X features, including numerical and categorical
     categorical_cols: Union[list, np.array]
-        List of names of categorical columns
+        List of names of categorical columns. Pass empty list if there are no categorical columns.
     y_var : string
         Name Y variable (aka target)
     y_categorical: bool
@@ -52,13 +52,18 @@ class LimeDF:
     def __init__(self, df: pd.DataFrame, x_vars: Union[list, np.array],
                  categorical_cols: Union[list, np.array], y_var: str,
                  y_categorical: bool, label_encodings=dict()):
-        df[categorical_cols] = df[categorical_cols].apply(lambda x: x.astype('object'))
+
+        if len(categorical_cols) > 0:
+            df[categorical_cols] = df[categorical_cols].apply(lambda x: x.astype('object'))
         self.df = df
         self.categorical_cols = categorical_cols
         self.y_var = y_var
         self.x_vars = x_vars
-        self.categorical_cols_ind = ([x_vars.index(categorical_cols[n])
-                                      for n in range(len(categorical_cols))])
+        if len(categorical_cols) > 0:
+            self.categorical_cols_ind = ([x_vars.index(categorical_cols[n])
+                                          for n in range(len(categorical_cols))])
+        else:
+            self.categorical_cols_ind = None
 
         # Place-holders
         self.y_class_names = None
@@ -76,19 +81,21 @@ class LimeDF:
             # Y_labels is just the raw y_var
             self.y_labels = self.df[self.y_var].values
 
-        self.label_encodings = dict()
-        # Handle categorical Xs
         data = self.df[self.x_vars].as_matrix()
-        self.categorical_names_dict = {}
-        for feature_ind in self.categorical_cols_ind:
-            print("Doing: ", self.x_vars[feature_ind], "with id ", feature_ind)
-            le = LabelEncoder()
-            data[:, feature_ind] = le.fit_transform(data[:, feature_ind].astype(str))
-            self.categorical_names_dict[feature_ind] = le.classes_
+               
+        # Handle categorical Xs
+        if len(self.categorical_cols) > 0:
+            self.label_encodings = dict()
+            self.categorical_names_dict = {}
+            for feature_ind in self.categorical_cols_ind:
+                print("Doing: ", self.x_vars[feature_ind], "with id ", feature_ind)
+                le = LabelEncoder()
+                data[:, feature_ind] = le.fit_transform(data[:, feature_ind].astype(str))
+                self.categorical_names_dict[feature_ind] = le.classes_
 
-            # Save label encoding
-            col_name = self.x_vars[feature_ind]
-            self.label_encodings[col_name] = le
+                # Save label encoding
+                col_name = self.x_vars[feature_ind]
+                self.label_encodings[col_name] = le
 
         return data.astype(float)
 
@@ -130,12 +137,13 @@ class H2oPredictProbaWrapper:
     model : h2o model
     mode : "classification" or "regression"
     """
+
     def __init__(self, model, column_names, mode: str):
         self.model = model
         self.column_names = column_names
         self.mode = mode
 
-        #Place-holders
+        # Place-holders
         self.pandas_df = None
         self.h2o_df = None
         self.predictions = None
@@ -164,7 +172,7 @@ class H2oPredictProbaWrapper:
             if one_observation:
                 self.predictions = self.predictions.values[0]
             else:
-                #TODO this still doesn't work
+                # TODO this still doesn't work
                 self.predictions = self.predictions.values[:, 0]
         else:
             raise AttributeError("Mode must be either classification or regression")
@@ -234,7 +242,7 @@ class H2oOutOfMemoryWrapper:
         """
         return pd.read_csv("{0}/train_data/{1}".format(self.work_directory, self.train_data))
 
-    #TODO check if code changes if Y is float
+    # TODO check if code changes if Y is float
     def make_predictions(self, input_name):
         """
             Args:
@@ -272,7 +280,7 @@ class H2oOutOfMemoryWrapper:
 
         return raw_df
 
-    #TODO handle possibility of y being float or int
+    # TODO handle possibility of y being float or int
     def limePredictions(self, data):
         """
             Args:
