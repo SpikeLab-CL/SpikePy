@@ -138,9 +138,10 @@ class H2oPredictProbaWrapper:
     mode : "classification" or "regression"
     """
 
-    def __init__(self, model, column_names, mode: str):
+    def __init__(self, model, column_names, mode: str, column_types: dict):
         self.model = model
         self.column_names = column_names
+        self.column_types = column_types
         self.mode = mode
 
         # Place-holders
@@ -156,10 +157,13 @@ class H2oPredictProbaWrapper:
             one_observation = True
             this_array = this_array.reshape(1, -1)
 
-        # We convert the numpy array that Lime sends to a pandas dataframe and
-        # convert the pandas dataframe to an h2o frame
-        self.pandas_df = pd.DataFrame(data=this_array, columns=self.column_names)
-        self.h2o_df = h2o.H2OFrame(self.pandas_df)
+
+        #self.pandas_df = pd.DataFrame(data=this_array, columns=self.column_names)
+        #self.h2o_df = h2o.H2OFrame(self.pandas_df)
+
+        # Manage missing values:
+        self.h2o_df = h2o.H2OFrame(this_array, column_names=self.column_names,
+                                column_types=self.column_types)
 
         # Predict with the h2o drf
         self.predictions = self.model.predict(self.h2o_df).as_data_frame()
