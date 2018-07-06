@@ -11,14 +11,17 @@ class ProductionModel(object):
     to be used in a flask or dash app.
 
     """
-    def __init__(self, model, variables, encodings, explainer):
+    def __init__(self, model, variables, encodings, explainer, column_types, mode):
         self.model = model
         self.variables = variables
         self.encodings = encodings
         self.explainer = explainer
-        self.load_encodings()
-        self.load_variables()
+        # self.load_encodings()
+        # self.load_variables()
         self.load_explainer()
+
+        self.column_types = column_types
+        self.mode = mode
 
     def load_encodings(self):
         try:
@@ -53,7 +56,7 @@ class ProductionModel(object):
             print("Can't find explainer at: {0}. Error: {1}".format(self.explainer, e))
 
 
-    #TODO: handle missing value to pass to lime (try-except?)
+    #TODO: handle missing value in a more elegant way?
     def process_input(self, arguments):
         missing = False
 
@@ -68,7 +71,7 @@ class ProductionModel(object):
                     missing = True
                 else:
                     vars_values[col_name] = self.encodings[col_name].transform([non_encoded])
-            else:
+            else:  # float case
                 raw_value = arguments.get(col_name)
                 if raw_value == "null":
                     vars_values[col_name] = np.nan
@@ -76,47 +79,36 @@ class ProductionModel(object):
                 else:
                     vars_values[col_name] = float(raw_value)
 
-        return np.array([vars_values[col] for col in self.variables])
-
-
-        # Versión de matías
-        """
-         # arguments: ImmutableMultiDict([('var1', 'value1'), ('var2', 'value2')])
-        instance = []
-        for variable in self.variables:
-            value = arguments.get(variable)
-            if value is not None and value != "null"() and value != "":
-                if variable in self.encodings:
-                    if value not in self.encodings[variable].classes_:
-                        instance.append(np.nan)  # si existe categoria nunca antes vista
-                    else:
-                        instance.append(self.encodings[variable].transform([value])[0])
-                else:
-                    instance.append(float(value))
-            else:
-                # si hay un missing lo reemplazamos con un nan en esa variable
-                instance.append(np.nan)
-        return instance
-        """
-
+        return missing, np.array([vars_values[col] for col in self.variables])
 
     def predict_proba(self, this_array):
-        h2o.init()
+        # If we have just 1 row of data we need to reshape it
         shape_tuple = np.shape(this_array)
+        one_observation = False
         if len(shape_tuple) == 1:
+            one_observation = True
             this_array = this_array.reshape(1, -1)
 
-        # Simplificar
-        self.pandas_df = pd.DataFrame(data=this_array, columns=self.variables)
-        self.h2o_df = h2o.H2OFrame(self.pandas_df)
+        # Manage missing values:
+        h2o_df = h2o.H2OFrame(this_array, column_names=self.variables,
+                              column_types=self.column_types, destination_frame="scratch")
 
-        self.aux_pred = self.model.predict(self.h2o_df)
-        self.predictions = self.aux_pred.as_data_frame()
-        self.predictions_result = self.predictions.iloc[:, 1:].as_matrix()
+        predictions = self.model.predict(h2o_df).as_data_frame()
 
-        h2o.remove(self.h2o_df.frame_id)  # remove frames to clean memory
-        h2o.remove(self.aux_pred.frame_id)
-        return self.predictions_result
+        if self.mode == "classification":
+            # first column is class labels, the rest
+            # are probabilities for each class
+            predictions = predictions.iloc[:, 1:].as_matrix()
+        elif self.mode == "regression":
+            if one_observation:
+                predictions = predictions.values[0]
+            else:
+                # TODO this still doesn't work
+                predictions = predictions.values[:, 0]
+        else:
+            raise AttributeError("Mode must be either classification or regression")
+
+        return predictions
 
     def get_explanation(self, instance):
         exp = self.explainer.explain_instance(instance,
@@ -128,7 +120,7 @@ class ProductionModel(object):
         explanation_as_list = explanation.as_list()
         json_response = []
         for variable in explanation_as_list:
-            var = {}
+            var = dict()
             var['variable'] = variable[0]
             var['value'] = variable[1]
             json_response.append(var)
@@ -138,7 +130,7 @@ class ProductionModel(object):
                                                'Rechaza-Redu': probabilities[1]}]})
         if probabilities[0] >= 0.8:
             json_response.append({'status': "Fast-Track"})
-        elif probabilities[0] < 0.8 and probabilities[0] > 0.3:
+        elif 0.3 < probabilities[0] < 0.8:
             json_response.append({'status': "Sin recomendacion"})
         else:
             json_response.append({'status': 'Luz Roja'})
