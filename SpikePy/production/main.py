@@ -116,6 +116,18 @@ class ProductionModel(object):
                                               num_features=5)
         return exp
 
+    @staticmethod
+    def fast_track_status(probability):
+        if probability >= 0.8:
+            status = "Fast-Track"
+        elif 0.3 < probability < 0.8:
+            status = "Sin recomendacion"
+        else:
+            status = "Luz Roja"
+        return {'status': status}
+
+
+
     def get_explanation_as_json(self, explanation, instance):
         explanation_as_list = explanation.as_list()
         json_response = []
@@ -128,10 +140,7 @@ class ProductionModel(object):
         probabilities = self.predict_proba(np.array(instance))[0]
         json_response.append({'Probability': [{'Autoriza': probabilities[0],
                                                'Rechaza-Redu': probabilities[1]}]})
-        if probabilities[0] >= 0.8:
-            json_response.append({'status': "Fast-Track"})
-        elif 0.3 < probabilities[0] < 0.8:
-            json_response.append({'status': "Sin recomendacion"})
-        else:
-            json_response.append({'status': 'Luz Roja'})
+        probability = probabilities[0]
+        json_response.append(ProductionModel.fast_track_status(probability))
+
         return json.dumps(json_response)
