@@ -1,11 +1,10 @@
 ##############
-# Slack Webhook
+# Slack Webhook and other goodies
 #############
 
 import requests
 import json
 import os
-
 
 
 def slack_code_ready(message, username, webhook_env='code_ready_webhook'):
@@ -34,3 +33,9 @@ def aws_kill_stack(stack_name, delete_hook_env='lambda_delete_webhook'):
 	r = requests.post(lambda_address, params=payload)
 	return r
 
+
+def shutdown(minutes):
+	"""
+	Shutdowns machine in given amount of minutes
+	"""
+	os.system("sudo shutdown -h +{0}".format(minutes))
