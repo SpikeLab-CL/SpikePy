@@ -50,25 +50,25 @@ def plot_confusion_matrix(cm, classes,
     plt.ylabel(ylabel, fontsize=14)
     plt.xlabel(xlabel, fontsize=14)
     
-    
+
+def plot_most_important_features(h2o_model, title=None, num_of_features=None):
     """
     Plots the feature importance for a trained H2o model in a better way compared with varimp_plot.
+
     Example:
     -------
     ```
-    plot_most_important_features(best_model,title="a very cool H2o model", num_of_features=10)
+    plot_most_important_features(best_model, title="a very cool H2o model", num_of_features=10)
     ```
-    Returns matplotlib fig" 
+    Returns matplotlib fig and ax
     """
-def plot_most_important_features(h2o_model, title=None, num_of_features=None):
-    
-    if num_of_features is None:
-        num_of_features = min(len(val), 10)
-        
+
     plt.rcdefaults()
     fig, ax = plt.subplots()
     
     variables = h2o_model._model_json['output']['variable_importances']['variable']
+    if num_of_features is None:
+        num_of_features = min(len(variables), 10)
     variables = variables[0:num_of_features]
     y_pos = np.arange(len(variables))
     scaled_importance = h2o_model._model_json['output']['variable_importances']['scaled_importance']
@@ -79,4 +79,4 @@ def plot_most_important_features(h2o_model, title=None, num_of_features=None):
     ax.set_xlabel('scaled importance')
     ax.set_title(title)
     fig.set_size_inches(6, 8)
-    return fig 
+    return fig, ax
