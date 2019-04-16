@@ -200,7 +200,7 @@ def compare_categorical_dists(df1: pd.DataFrame, df2: pd.DataFrame, variables: L
 
 def pdplot(df: pd.DataFrame, variables: List, target: str, numeric: bool,
            pos_class=1, nsample=1_000_000, nbins=100, size_subplot=(15, 7),
-           confidence_q=.95) -> tuple:
+           confidence_q=[.95]) -> tuple:
     """
     Partial dependency plot for a categorical target variable.
     For now, all variables must be either all numerical or all categorical
@@ -243,19 +243,26 @@ def pdplot(df: pd.DataFrame, variables: List, target: str, numeric: bool,
         size_posclass = df_sample.groupby(var).apply(npenetracion, target, pos_class)
         pen_posclass = (size_posclass / size)
         variance = pen_posclass * (1 - pen_posclass)
-        factor_confidence =  -norm.ppf((1-confidence_q)/2)
-        lower_conf = 100 * np.maximum(pen_posclass - factor_confidence * np.sqrt(variance / size), 0)
-        upper_conf = 100 * np.minimum(pen_posclass + factor_confidence * np.sqrt(variance / size), 1)
+
+        lower_conf = {}
+        upper_conf = {}
+        for q in confidence_q:
+            factor_confidence =  -norm.ppf((1-q)/2)
+            lower_conf[q] = 100 * np.maximum(pen_posclass - factor_confidence * np.sqrt(variance / size), 0)
+            upper_conf[q] = 100 * np.minimum(pen_posclass + factor_confidence * np.sqrt(variance / size), 1)
+
         if numeric:
             sort_categories = quant_interval
         else:
             sort_categories = list(pen_posclass.sort_values(ascending=False).index)
+
         pen_posclass = 100 * pd.DataFrame(pen_posclass[sort_categories])
         pen_posclass.rename(columns={0: 'prob'}, inplace=True)
         pen_posclass.plot(ax=axes[iv], kind='bar')
-        axes[iv].fill_between(range(len(sort_categories)), lower_conf[sort_categories].values,
-                              upper_conf[sort_categories].values,
-                              alpha=0.5, label=f'{100 * confidence_q} %')
+        for q in confidence_q:
+            axes[iv].fill_between(range(len(sort_categories)), lower_conf[q][sort_categories].values,
+                                  upper_conf[q][sort_categories].values,
+                                  alpha=0.5, label=f'{100 * q} %')
         axes[iv].set_ylabel('% ' + target + ' = ' + str(pos_class))
         axes[iv].set_title(var)
         axes[iv].grid(False)
