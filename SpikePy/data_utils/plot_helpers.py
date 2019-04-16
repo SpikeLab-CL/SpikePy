@@ -7,6 +7,7 @@ import pandas as pd
 from tqdm import tqdm_notebook as progress_bar
 from scipy.stats import rankdata
 from typing import List
+from scipy.stats import norm
 
 
 
@@ -198,7 +199,8 @@ def compare_categorical_dists(df1: pd.DataFrame, df2: pd.DataFrame, variables: L
 
 
 def pdplot(df: pd.DataFrame, variables: List, target: str, numeric: bool,
-           pos_class=1, nsample=1_000_000, nbins=100, size_subplot=(15, 7)) -> tuple:
+           pos_class=1, nsample=1_000_000, nbins=100, size_subplot=(15, 7),
+           confidence_q=.95) -> tuple:
     """
     Partial dependency plot for a categorical target variable.
     For now, all variables must be either all numerical or all categorical
@@ -210,6 +212,7 @@ def pdplot(df: pd.DataFrame, variables: List, target: str, numeric: bool,
     :param pos_class: label of positive class
     :param nsample: maximum number of observations per distribution
     :param nbins: number of bins to discretize numerical variables
+    :param confidence_q: probability of confidence interval
     :return:
     """
     def npenetracion(df_, target_, pos_class_):
@@ -219,8 +222,9 @@ def pdplot(df: pd.DataFrame, variables: List, target: str, numeric: bool,
     fig, axes = plt.subplots(len(variables),
                              figsize=(size_subplot[0], size_subplot[1] * len(variables)))
 
+    global_pen = 100 * (df_sample[target] == pos_class).mean()
     for iv, var in progress_bar(list(enumerate(variables))):
-
+        axes[iv].axhline(y=global_pen, linestyle='--', color='k')
         if numeric:
             quantiles = (list(np.unique(np.quantile(
                               df_sample[var].values, q=(1 / nbins) * np.arange(1, nbins)))))
@@ -229,7 +233,8 @@ def pdplot(df: pd.DataFrame, variables: List, target: str, numeric: bool,
             rango = max_df - min_df
             eps = .001 * rango
             quantiles = np.array([min_df - eps] + quantiles + [max_df + eps])
-            quant_interval = np.array([f'({quantiles[i]}, {quantiles[i + 1]}]' for i in range(len(quantiles) - 1)])
+            quant_interval = np.array([f'({quantiles[i]:.2f}, {quantiles[i + 1]:.2f}]'
+                                       for i in range(len(quantiles) - 1)])
             cdf_values = ECDF(quantiles)(df_sample[var])
             index_quantile = rankdata(cdf_values, method='dense') - 1
             df_sample[var] = quant_interval[index_quantile]
@@ -238,19 +243,23 @@ def pdplot(df: pd.DataFrame, variables: List, target: str, numeric: bool,
         size_posclass = df_sample.groupby(var).apply(npenetracion, target, pos_class)
         pen_posclass = (size_posclass / size)
         variance = pen_posclass * (1 - pen_posclass)
-        lower_conf = 100 * np.maximum(pen_posclass - 1.96 * np.sqrt(variance / size), 0)
-        upper_conf = 100 * np.minimum(pen_posclass + 1.96 * np.sqrt(variance / size), 1)
+        factor_confidence =  -norm.ppf((1-confidence_q)/2)
+        lower_conf = 100 * np.maximum(pen_posclass - factor_confidence * np.sqrt(variance / size), 0)
+        upper_conf = 100 * np.minimum(pen_posclass + factor_confidence * np.sqrt(variance / size), 1)
         if numeric:
             sort_categories = quant_interval
         else:
             sort_categories = list(pen_posclass.sort_values(ascending=False).index)
         pen_posclass = 100 * pd.DataFrame(pen_posclass[sort_categories])
-        pen_posclass.plot(ax=axes[iv], kind='bar', legend=False)
+        pen_posclass.rename(columns={0: 'prob'}, inplace=True)
+        pen_posclass.plot(ax=axes[iv], kind='bar')
         axes[iv].fill_between(range(len(sort_categories)), lower_conf[sort_categories].values,
-                              upper_conf[sort_categories].values, alpha=0.5)
+                              upper_conf[sort_categories].values,
+                              alpha=0.5, label=f'{100 * confidence_q} %')
         axes[iv].set_ylabel('% ' + target + ' = ' + str(pos_class))
         axes[iv].set_title(var)
         axes[iv].grid(False)
+        axes[iv].legend()
     plt.tight_layout()
 
     return fig, axes
