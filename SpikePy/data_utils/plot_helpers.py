@@ -200,7 +200,7 @@ def compare_categorical_dists(df1: pd.DataFrame, df2: pd.DataFrame, variables: L
 
 def pdplot(df: pd.DataFrame, variables: List, target: str, numeric: bool,
            pos_class=1, nsample=1_000_000, nbins=100, size_subplot=(15, 7),
-           confidence_q=[.95]) -> tuple:
+           confidence_q=[.95], sort_q=.3, ncategories=100) -> tuple:
     """
     Partial dependency plot for a categorical target variable.
     For now, all variables must be either all numerical or all categorical
@@ -213,6 +213,8 @@ def pdplot(df: pd.DataFrame, variables: List, target: str, numeric: bool,
     :param nsample: maximum number of observations per distribution
     :param nbins: number of bins to discretize numerical variables
     :param confidence_q: probability of confidence interval
+    :param sort_q: probability of confidece interval for wich the plot will be order by
+    :param ncategories: number of categories to show
     :return:
     """
     def npenetracion(df_, target_, pos_class_):
@@ -246,7 +248,7 @@ def pdplot(df: pd.DataFrame, variables: List, target: str, numeric: bool,
 
         lower_conf = {}
         upper_conf = {}
-        for q in confidence_q:
+        for q in confidence_q + [sort_q]:
             factor_confidence =  -norm.ppf((1-q)/2)
             lower_conf[q] = 100 * np.maximum(pen_posclass - factor_confidence * np.sqrt(variance / size), 0)
             upper_conf[q] = 100 * np.minimum(pen_posclass + factor_confidence * np.sqrt(variance / size), 1)
@@ -254,7 +256,7 @@ def pdplot(df: pd.DataFrame, variables: List, target: str, numeric: bool,
         if numeric:
             sort_categories = quant_interval
         else:
-            sort_categories = list(pen_posclass.sort_values(ascending=False).index)
+            sort_categories = list(lower_conf[sort_q].sort_values(ascending=False).index)[:ncategories]
 
         pen_posclass = 100 * pd.DataFrame(pen_posclass[sort_categories])
         pen_posclass.rename(columns={0: 'prob'}, inplace=True)
