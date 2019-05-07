@@ -8,6 +8,7 @@ from tqdm import tqdm_notebook as progress_bar
 from scipy.stats import rankdata
 from typing import List
 from scipy.stats import norm
+from scipy.stats import wasserstein_distance as em_distance
 
 
 
@@ -90,52 +91,113 @@ def plot_most_important_features(h2o_model, title=None, num_of_features=None):
     return fig, ax
 
 
-def compare_cont_dists(df1: pd.DataFrame, df2: pd.DataFrame, variables: List, labels=['df1', 'df2'],
-                       divisor_step=2, nsample=5000) -> tuple:
+def compare_cont_dists(df_list: List, variables=None, labels=None,
+                       divisor_step=2, nsample=5000, nbins=50, all=False,
+                       sort_by='earth_mover', nvars=None, plot_cdf=True,
+                       figsize=(7, 4), normalize=True) -> tuple:
     """
     Compares two distributions on a list of continuous or numerical variables
 
-    :param df1:
-    :param df2:
-    :param variables:
+    :param df_list: list of dataframe
+    :param variables: list of variables to plot
     :param labels: labels of dataframes for plots
     :param divisor_step: fraction of minimal difference between distributions to reflect on plot
     :param nsample: maximum number of observations per distribution
-    :return: fig, axes
-    """
-    fig, axes = plt.subplots(len(variables), 2, figsize=(14, len(variables) * 4))
-    axes = axes.reshape((len(variables), 2))
-    df1_sample = df1.sample(min(len(df1), nsample))
-    df2_sample = df2.sample(min(len(df2), nsample))
-    for iv, var in progress_bar(list(enumerate(variables))):
-        values1 = df1_sample[var][df1_sample[var].notna()].values.flatten()
-        values2 = df2_sample[var][df2_sample[var].notna()].values.flatten()
-        allvalues = np.concatenate((values1, values2))
-        pvalor = ks_2samp(values1, values2).pvalue
+    :param nbins: number of bins in histogram
+    :param all: plots the mixture of all distributions (all dataframes in df_list)
+    :param sort_by: sorts histograms order by some metric (example: earth mover distance)
+    :param nvars: numbers of variables that will be plot
+    :param plot_cdf: if True it plots the cdf
+    :param normalize: transform variables to [0,1] to compute the sort metric
+    :param: figsize: tuple of fig size
 
-        # histogramas
-        _, bins, _ = axes[iv, 0].hist(values1, bins=50, range=[allvalues.min(), allvalues.max()], density=True, label=labels[0])
-        _, _, _ = axes[iv, 0].hist(values2, bins=bins, alpha=0.4, density=True, label=labels[1])
+    :return: fig, axes, em_dist
+    """
+    if variables is None:
+        variables = df_list[0].columns
+    ndf = len(df_list)
+    if labels is None:
+        labels = [f'df{df_index}' for df_index in range(ndf)]
+
+
+    if plot_cdf:
+        ncolumns = 2
+    else:
+        ncolumns = 1
+
+    if nvars is None:
+        nvars = len(variables)
+
+    fig, axes = plt.subplots(nvars, ncolumns, figsize=(figsize[0] * ncolumns, nvars * figsize[1]))
+    axes = axes.reshape((nvars, ncolumns))
+    df_sample = {}
+    for df_index, df in enumerate(df_list):
+        df_sample[df_index] = df.sample(min(len(df), nsample))
+
+    values = {}
+    ecdf = {}
+    pvalor_ks = pd.DataFrame(columns=variables, index=['metric'])
+    em_dist = pvalor_ks.copy()
+
+    for var in progress_bar(list(variables)):
+        for df_index in range(2):
+            values[df_index] = df_sample[df_index][var][df_sample[df_index][var].notna()].values.flatten()
+            if normalize is True:
+                values[df_index] = (values[df_index] - values[df_index].min())/(values[df_index].max()- values[df_index].min())
+
+        if len(values.keys()) > 1:
+            pvalor_ks.loc['metric', var] = ks_2samp(values[0], values[1]).pvalue
+            em_dist.loc['metric', var] =  em_distance(values[0], values[1])
+
+
+    #plots
+    if sort_by == 'earth_mover':
+        em_dist.sort_values(by='metric', axis=1, ascending=False, inplace=True)
+        vars_sort = em_dist.columns
+        vars_sort = vars_sort[:nvars]
+    else:
+        vars_sort = variables
+
+    for iv, var in progress_bar(list(enumerate(vars_sort))):
+
+        for df_index in range(ndf):
+            values[df_index] = df_sample[df_index][var][df_sample[df_index][var].notna()].values.flatten()
+        allvalues = np.concatenate(list(values.values()))
+
+        #histogramas
+        bins = np.linspace(allvalues.min(), allvalues.max(), nbins)
+        if all:
+            _, _, _ = axes[iv, 0].hist(allvalues, bins=bins, density=True, label=['ambos'], alpha=0.5)
+
+        for df_index in range(ndf):
+            _, _, _ = axes[iv, 0].hist(values[df_index], bins=bins, alpha=0.5, density=True, label=labels[df_index])
+
         axes[iv, 0].legend()
         axes[iv, 0].set_title(var)
+        axes[iv, 0].grid(False)
 
-        # cdf
-        diff = abs(np.diff(allvalues))
-        steps = diff[diff > 0].min() / divisor_step
-        start = allvalues.min()
-        stop = allvalues.max()
-        x = np.arange(start, stop, steps)
+        if plot_cdf:
+            # cdf
+            diff = abs(np.diff(allvalues))
+            steps = diff[diff > 0].min() / divisor_step
+            start = allvalues.min()
+            stop = allvalues.max()
+            x = np.arange(start, stop, steps)
 
-        ecdf1 = ECDF(values1)
-        ecdf2 = ECDF(values2)
-        axes[iv, 1].plot(x, ecdf1(x), label=labels[0])
-        axes[iv, 1].plot(x, ecdf2(x), label=labels[1])
-        axes[iv, 1].legend()
-        axes[iv, 1].set_title(f'p-valor = {pvalor:.3f} (K-S)')
-        axes[iv, 1].grid(False)
+            for df_index in range(ndf):
+                ecdf[df_index] = ECDF(values[df_index])
+            if all:
+                ecdf_all = ECDF(allvalues)
+                axes[iv, 1].plot(x, ecdf_all(x), label='ambos')
+
+            for df_index in range(ndf):
+                axes[iv, 1].plot(x, ecdf[df_index](x), label=labels[df_index])
+            axes[iv, 1].legend()
+            axes[iv, 1].set_title(f'w_distance = {em_dist[var].values[0]:.3f} ')
+            axes[iv, 1].grid(False)
     plt.tight_layout()
 
-    return fig, axes
+    return fig, axes, em_dist
 
 
 def compare_categorical_dists(df1: pd.DataFrame, df2: pd.DataFrame, variables: List, labels=['df1', 'df2'],
