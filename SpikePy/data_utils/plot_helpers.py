@@ -91,12 +91,17 @@ def plot_most_important_features(h2o_model, title=None, num_of_features=None):
     return fig, ax
 
 
-def compare_cont_dists(df_list: List, variables=None, labels=None,
-                       divisor_step=2, nsample=5000, nbins=50, all=False,
+def compare_cont_dists(df_list: List[pd.DataFrame], variables=None, labels=None,
+                       divisor_step=2, nsample=5000, nbins=50, all_=False,
                        sort_by='earth_mover', nvars=None, plot=True, plot_cdf=True,
-                       figsize=(7, 4), normalize=True) -> tuple:
+                       figsize=(7, 4), normalize_distance=True) -> tuple:
     """
-    Compares two distributions on a list of continuous or numerical variables
+    Plots a list of dataframes on a list of continuous or numerical variables
+    It compares the first two dataframes and sorts the order of graphs
+    based on a distance metric over those two dataframes
+    
+    It returns a fig, axes and the earth mover distance
+    If option plot is set as False, it returns just the earth mover distance
 
     :param df_list: list of dataframe
     :param variables: list of variables to plot
@@ -104,12 +109,13 @@ def compare_cont_dists(df_list: List, variables=None, labels=None,
     :param divisor_step: fraction of minimal difference between distributions to reflect on plot
     :param nsample: maximum number of observations per distribution
     :param nbins: number of bins in histogram
-    :param all: plots the mixture of all distributions (all dataframes in df_list)
+    :param all_: plots the mixture of all distributions (all dataframes in df_list)
     :param sort_by: sorts histograms order by some metric (example: earth mover distance)
     :param nvars: numbers of variables that will be plot
+    :param plot: Boolean. if True, returns fig and axes
     :param plot_cdf: if True it plots the cdf
-    :param normalize: transform variables to [0,1] to compute the sort metric
-    :param: figsize: tuple of fig size
+    :param normalize_distance: transform variables to [0,1] to compute the sort metric
+    :param figsize: tuple of fig size
 
     :return: fig, axes, em_dist
     """
@@ -118,7 +124,6 @@ def compare_cont_dists(df_list: List, variables=None, labels=None,
     ndf = len(df_list)
     if labels is None:
         labels = [f'df{df_index}' for df_index in range(ndf)]
-
 
     if plot_cdf:
         ncolumns = 2
@@ -142,15 +147,15 @@ def compare_cont_dists(df_list: List, variables=None, labels=None,
         if nvalues > 0:
             for df_index in range(min(2, ndf)):
                 values[df_index] = df_sample[df_index][var][df_sample[df_index][var].notna()].values.flatten()
-                if normalize is True:
-                    values[df_index] = (values[df_index] - values[df_index].min())/(values[df_index].max()- values[df_index].min())
+                if normalize_distance is True:
+                    values[df_index] = ((values[df_index] - values[df_index].min()) /
+                                        (values[df_index].max() - values[df_index].min()))
 
             if len(values.keys()) > 1:
                 pvalor_ks.loc['metric', var] = ks_2samp(values[0], values[1]).pvalue
-                em_dist.loc['metric', var] =  em_distance(values[0], values[1])
+                em_dist.loc['metric', var] = em_distance(values[0], values[1])
         else:
             em_dist.loc['metric', var] = np.NaN
-
 
     #plots
     if plot:
@@ -163,7 +168,7 @@ def compare_cont_dists(df_list: List, variables=None, labels=None,
         else:
             vars_sort = variables
 
-        for iv, var in progress_bar(list(enumerate(vars_sort))):
+        for ind_var, var in progress_bar(list(enumerate(vars_sort))):
 
             for df_index in range(ndf):
                 values[df_index] = df_sample[df_index][var][df_sample[df_index][var].notna()].values.flatten()
@@ -171,15 +176,15 @@ def compare_cont_dists(df_list: List, variables=None, labels=None,
 
             #histogramas
             bins = np.linspace(allvalues.min(), allvalues.max(), nbins)
-            if all:
-                _, _, _ = axes[iv, 0].hist(allvalues, bins=bins, density=True, label=['ambos'], alpha=0.5)
+            if all_:
+                _, _, _ = axes[ind_var, 0].hist(allvalues, bins=bins, density=True, label=['ambos'], alpha=0.5)
 
             for df_index in range(ndf):
-                _, _, _ = axes[iv, 0].hist(values[df_index], bins=bins, alpha=0.5, density=True, label=labels[df_index])
+                _, _, _ = axes[ind_var, 0].hist(values[df_index], bins=bins, alpha=0.5, density=True, label=labels[df_index])
 
-            axes[iv, 0].legend()
-            axes[iv, 0].set_title(var)
-            axes[iv, 0].grid(False)
+            axes[ind_var, 0].legend()
+            axes[ind_var, 0].set_title(var)
+            axes[ind_var, 0].grid(False)
 
             if plot_cdf:
                 # cdf
@@ -191,15 +196,15 @@ def compare_cont_dists(df_list: List, variables=None, labels=None,
 
                 for df_index in range(ndf):
                     ecdf[df_index] = ECDF(values[df_index])
-                if all:
+                if all_:
                     ecdf_all = ECDF(allvalues)
-                    axes[iv, 1].plot(x, ecdf_all(x), label='ambos')
+                    axes[ind_var, 1].plot(x, ecdf_all(x), label='ambos')
 
                 for df_index in range(ndf):
-                    axes[iv, 1].plot(x, ecdf[df_index](x), label=labels[df_index])
-                axes[iv, 1].legend()
-                axes[iv, 1].set_title(f'w_distance = {em_dist[var].values[0]:.3f} ')
-                axes[iv, 1].grid(False)
+                    axes[ind_var, 1].plot(x, ecdf[df_index](x), label=labels[df_index])
+                axes[ind_var, 1].legend()
+                axes[ind_var, 1].set_title(f'w_distance = {em_dist[var].values[0]:.3f} ')
+                axes[ind_var, 1].grid(False)
         plt.tight_layout()
     else:
         fig, axes = None, None
