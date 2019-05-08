@@ -93,7 +93,7 @@ def plot_most_important_features(h2o_model, title=None, num_of_features=None):
 
 def compare_cont_dists(df_list: List, variables=None, labels=None,
                        divisor_step=2, nsample=5000, nbins=50, all=False,
-                       sort_by='earth_mover', nvars=None, plot_cdf=True,
+                       sort_by='earth_mover', nvars=None, plot=True, plot_cdf=True,
                        figsize=(7, 4), normalize=True) -> tuple:
     """
     Compares two distributions on a list of continuous or numerical variables
@@ -128,8 +128,6 @@ def compare_cont_dists(df_list: List, variables=None, labels=None,
     if nvars is None:
         nvars = len(variables)
 
-    fig, axes = plt.subplots(nvars, ncolumns, figsize=(figsize[0] * ncolumns, nvars * figsize[1]))
-    axes = axes.reshape((nvars, ncolumns))
     df_sample = {}
     for df_index, df in enumerate(df_list):
         df_sample[df_index] = df.sample(min(len(df), nsample))
@@ -140,62 +138,71 @@ def compare_cont_dists(df_list: List, variables=None, labels=None,
     em_dist = pvalor_ks.copy()
 
     for var in progress_bar(list(variables)):
-        for df_index in range(2):
-            values[df_index] = df_sample[df_index][var][df_sample[df_index][var].notna()].values.flatten()
-            if normalize is True:
-                values[df_index] = (values[df_index] - values[df_index].min())/(values[df_index].max()- values[df_index].min())
+        nvalues = min([len(df_sample[i][var][df_sample[i][var].notna()].values.flatten()) for i in range(min(2, ndf))])
+        if nvalues > 0:
+            for df_index in range(min(2, ndf)):
+                values[df_index] = df_sample[df_index][var][df_sample[df_index][var].notna()].values.flatten()
+                if normalize is True:
+                    values[df_index] = (values[df_index] - values[df_index].min())/(values[df_index].max()- values[df_index].min())
 
-        if len(values.keys()) > 1:
-            pvalor_ks.loc['metric', var] = ks_2samp(values[0], values[1]).pvalue
-            em_dist.loc['metric', var] =  em_distance(values[0], values[1])
+            if len(values.keys()) > 1:
+                pvalor_ks.loc['metric', var] = ks_2samp(values[0], values[1]).pvalue
+                em_dist.loc['metric', var] =  em_distance(values[0], values[1])
+        else:
+            em_dist.loc['metric', var] = np.NaN
 
 
     #plots
-    if sort_by == 'earth_mover':
-        em_dist.sort_values(by='metric', axis=1, ascending=False, inplace=True)
-        vars_sort = em_dist.columns
-        vars_sort = vars_sort[:nvars]
-    else:
-        vars_sort = variables
+    if plot:
+        fig, axes = plt.subplots(nvars, ncolumns, figsize=(figsize[0] * ncolumns, nvars * figsize[1]))
+        axes = axes.reshape((nvars, ncolumns))
+        if sort_by == 'earth_mover':
+            em_dist.sort_values(by='metric', axis=1, ascending=False, inplace=True)
+            vars_sort = em_dist.columns
+            vars_sort = vars_sort[:nvars]
+        else:
+            vars_sort = variables
 
-    for iv, var in progress_bar(list(enumerate(vars_sort))):
-
-        for df_index in range(ndf):
-            values[df_index] = df_sample[df_index][var][df_sample[df_index][var].notna()].values.flatten()
-        allvalues = np.concatenate(list(values.values()))
-
-        #histogramas
-        bins = np.linspace(allvalues.min(), allvalues.max(), nbins)
-        if all:
-            _, _, _ = axes[iv, 0].hist(allvalues, bins=bins, density=True, label=['ambos'], alpha=0.5)
-
-        for df_index in range(ndf):
-            _, _, _ = axes[iv, 0].hist(values[df_index], bins=bins, alpha=0.5, density=True, label=labels[df_index])
-
-        axes[iv, 0].legend()
-        axes[iv, 0].set_title(var)
-        axes[iv, 0].grid(False)
-
-        if plot_cdf:
-            # cdf
-            diff = abs(np.diff(allvalues))
-            steps = diff[diff > 0].min() / divisor_step
-            start = allvalues.min()
-            stop = allvalues.max()
-            x = np.arange(start, stop, steps)
+        for iv, var in progress_bar(list(enumerate(vars_sort))):
 
             for df_index in range(ndf):
-                ecdf[df_index] = ECDF(values[df_index])
+                values[df_index] = df_sample[df_index][var][df_sample[df_index][var].notna()].values.flatten()
+            allvalues = np.concatenate(list(values.values()))
+
+            #histogramas
+            bins = np.linspace(allvalues.min(), allvalues.max(), nbins)
             if all:
-                ecdf_all = ECDF(allvalues)
-                axes[iv, 1].plot(x, ecdf_all(x), label='ambos')
+                _, _, _ = axes[iv, 0].hist(allvalues, bins=bins, density=True, label=['ambos'], alpha=0.5)
 
             for df_index in range(ndf):
-                axes[iv, 1].plot(x, ecdf[df_index](x), label=labels[df_index])
-            axes[iv, 1].legend()
-            axes[iv, 1].set_title(f'w_distance = {em_dist[var].values[0]:.3f} ')
-            axes[iv, 1].grid(False)
-    plt.tight_layout()
+                _, _, _ = axes[iv, 0].hist(values[df_index], bins=bins, alpha=0.5, density=True, label=labels[df_index])
+
+            axes[iv, 0].legend()
+            axes[iv, 0].set_title(var)
+            axes[iv, 0].grid(False)
+
+            if plot_cdf:
+                # cdf
+                diff = abs(np.diff(allvalues))
+                steps = diff[diff > 0].min() / divisor_step
+                start = allvalues.min()
+                stop = allvalues.max()
+                x = np.arange(start, stop, steps)
+
+                for df_index in range(ndf):
+                    ecdf[df_index] = ECDF(values[df_index])
+                if all:
+                    ecdf_all = ECDF(allvalues)
+                    axes[iv, 1].plot(x, ecdf_all(x), label='ambos')
+
+                for df_index in range(ndf):
+                    axes[iv, 1].plot(x, ecdf[df_index](x), label=labels[df_index])
+                axes[iv, 1].legend()
+                axes[iv, 1].set_title(f'w_distance = {em_dist[var].values[0]:.3f} ')
+                axes[iv, 1].grid(False)
+        plt.tight_layout()
+    else:
+        fig, axes = None, None
 
     return fig, axes, em_dist
 
