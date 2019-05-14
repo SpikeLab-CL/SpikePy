@@ -274,7 +274,7 @@ def compare_categorical_dists(df1: pd.DataFrame, df2: pd.DataFrame, variables: L
 
 def pdplot(df: pd.DataFrame, variables: List, target: str, numeric: bool,
            pos_class=1, nsample=1_000_000, nbins=100, size_subplot=(15, 7),
-           confidence_q=[.95], sort_q=.3, ncategories=100) -> tuple:
+           confidence_q=[.95], sort_q=.3, ncategories=100, target_type='classification') -> tuple:
     """
     Partial dependency plot for a categorical target variable.
     For now, all variables must be either all numerical or all categorical
@@ -289,6 +289,7 @@ def pdplot(df: pd.DataFrame, variables: List, target: str, numeric: bool,
     :param confidence_q: probability of confidence interval
     :param sort_q: probability of confidece interval for wich the plot will be order by
     :param ncategories: number of categories to show
+    :param target_type: classification or regression target
     :return:
     """
     def npenetracion(df_, target_, pos_class_):
@@ -298,48 +299,72 @@ def pdplot(df: pd.DataFrame, variables: List, target: str, numeric: bool,
     fig, axes = plt.subplots(len(variables),
                              figsize=(size_subplot[0], size_subplot[1] * len(variables)))
 
-    global_pen = 100 * (df_sample[target] == pos_class).mean()
+    if target_type == 'classification':
+        name = 'prob'
+        ylabel = '% ' + target + ' = ' + str(pos_class)
+        global_effect = 100 * (df_sample[target] == pos_class).mean()
+        factor = 100
+    elif target_type == 'regression':
+        name = 'mean'
+        ylabel = target
+        global_effect = (df_sample[target]).mean()
+        factor = 1
+
+
     for iv, var in progress_bar(list(enumerate(variables))):
-        axes[iv].axhline(y=global_pen, linestyle='--', color='k')
+        axes[iv].axhline(y=global_effect, linestyle='--', color='k')
+        #transform numerical variables in categoricals (bins)
         if numeric:
+            values = df_sample[var].values
+            values = values[~np.isnan(values)]
             quantiles = (list(np.unique(np.quantile(
-                              df_sample[var].values, q=(1 / nbins) * np.arange(1, nbins)))))
-            min_df = df_sample[var].min()
-            max_df = df_sample[var].max()
+                              values, q=(1 / nbins) * np.arange(1, nbins)))))
+            min_df = np.min(values)
+            max_df = np.max(values)
             rango = max_df - min_df
             eps = .001 * rango
             quantiles = np.array([min_df - eps] + quantiles + [max_df + eps])
             quant_interval = np.array([f'({quantiles[i]:.2f}, {quantiles[i + 1]:.2f}]'
                                        for i in range(len(quantiles) - 1)])
-            cdf_values = ECDF(quantiles)(df_sample[var])
+            cdf_values = ECDF(quantiles)(values)
             index_quantile = rankdata(cdf_values, method='dense') - 1
             df_sample[var] = quant_interval[index_quantile]
 
         size = df_sample[var].value_counts()
-        size_posclass = df_sample.groupby(var).apply(npenetracion, target, pos_class)
-        pen_posclass = (size_posclass / size)
-        variance = pen_posclass * (1 - pen_posclass)
+        if target_type == 'classification':
+            size_posclass = df_sample.groupby(var).apply(npenetracion, target, pos_class)
+            mean_effect = (size_posclass / size)
+            variance = mean_effect * (1 - mean_effect)
+
+        elif target_type == 'regression':
+            mean_effect = df_sample.groupby(var)[target].mean()
+            variance = df_sample.groupby(var)[target].var()
+
+
 
         lower_conf = {}
         upper_conf = {}
         for q in confidence_q + [sort_q]:
-            factor_confidence =  -norm.ppf((1-q)/2)
-            lower_conf[q] = 100 * np.maximum(pen_posclass - factor_confidence * np.sqrt(variance / size), 0)
-            upper_conf[q] = 100 * np.minimum(pen_posclass + factor_confidence * np.sqrt(variance / size), 1)
+            factor_confidence = -norm.ppf((1-q)/2)
+            lower_conf[q] = mean_effect - factor_confidence * np.sqrt(variance / size)
+            upper_conf[q] = mean_effect + factor_confidence * np.sqrt(variance / size)
+            if target_type == 'classification':
+                lower_conf[q] = factor * np.maximum(lower_conf[q], 0)
+                upper_conf[q] = factor * np.minimum(upper_conf[q], 1)
 
         if numeric:
             sort_categories = quant_interval
         else:
             sort_categories = list(lower_conf[sort_q].sort_values(ascending=False).index)[:ncategories]
 
-        pen_posclass = 100 * pd.DataFrame(pen_posclass[sort_categories])
-        pen_posclass.rename(columns={0: 'prob'}, inplace=True)
-        pen_posclass.plot(ax=axes[iv], kind='bar')
+        mean_effect = factor * pd.DataFrame(mean_effect[sort_categories])
+        mean_effect.rename(columns={0: name}, inplace=True)
+        mean_effect.plot(ax=axes[iv], kind='bar')
         for q in confidence_q:
             axes[iv].fill_between(range(len(sort_categories)), lower_conf[q][sort_categories].values,
                                   upper_conf[q][sort_categories].values,
                                   alpha=0.5, label=f'{100 * q} %')
-        axes[iv].set_ylabel('% ' + target + ' = ' + str(pos_class))
+        axes[iv].set_ylabel(ylabel)
         axes[iv].set_title(var)
         axes[iv].grid(False)
         axes[iv].legend()
