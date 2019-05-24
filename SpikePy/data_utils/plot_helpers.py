@@ -28,7 +28,7 @@ def plot_confusion_matrix(cm, classes,
     cnf_matrix = sklearn.metrics.confusion_matrix(df_pred['catReal'],
                  df_pred['catPredict'])
     plt.figure(figsize=(10, 8))
-    plot_confusion_matrix(cnf_matrix, classes=names_siniestralidad,
+    plot_confusion_matrix(cnf_matrix, clas ses=names_siniestralidad,
                       normalize=True,
             title="Modelo Completo \n Matriz de confusión normalizada")
     ```
@@ -94,7 +94,7 @@ def plot_most_important_features(h2o_model, title=None, num_of_features=None):
 def compare_cont_dists(df_list: List[pd.DataFrame], variables=None, labels=None,
                        divisor_step=2, nsample=5000, nbins=50, all_=False,
                        sort_by='earth_mover', nvars=None, plot=True, plot_cdf=True,
-                       figsize=(7, 4), normalize_distance=True) -> tuple:
+                       figsize=(7, 4), normalize_distance=True, path=None) -> tuple:
     """
     Plots a list of dataframes on a list of continuous or numerical variables
     It compares the first two dataframes and sorts the order of graphs
@@ -209,11 +209,14 @@ def compare_cont_dists(df_list: List[pd.DataFrame], variables=None, labels=None,
     else:
         fig, axes = None, None
 
+    if path is not None:
+        plt.savefig(path)
+
     return fig, axes, em_dist
 
 
 def compare_categorical_dists(df1: pd.DataFrame, df2: pd.DataFrame, variables: List, labels=['df1', 'df2'],
-                              minimal_category_size=0.01, width=.97, nsample=5000):
+                              minimal_category_size=0.01, width=.97, nsample=5000, path=None):
     """
     Compares two distributions on a list of categorical variables
 
@@ -224,6 +227,7 @@ def compare_categorical_dists(df1: pd.DataFrame, df2: pd.DataFrame, variables: L
     :param minimal_category_size: minimal percentage of data that a category should have to be shown
     :param width: width of bar in barplot
     :param nsample: maximum number of observations per distribution
+    :param path: path where image will be saved
     :return: fig, axes
     """
     fig, axes = plt.subplots(len(variables), figsize=(15, 7 * len(variables)))
@@ -268,6 +272,9 @@ def compare_categorical_dists(df1: pd.DataFrame, df2: pd.DataFrame, variables: L
             axes[iv].annotate(f'{diff:.1f}%', (x, altura_max * 1.01))
         axes[iv].grid(False)
     plt.tight_layout()
+
+    if path is not None:
+        plt.savefig(path)
 
     return fig, axes
 
@@ -339,7 +346,6 @@ def pdplot(df: pd.DataFrame, variables: List, target: str, numeric: bool,
         elif target_type == 'regression':
             mean_effect = df_sample.groupby(var)[target].mean()
             variance = df_sample.groupby(var)[target].var()
-
 
 
         lower_conf = {}
