@@ -94,7 +94,7 @@ def plot_most_important_features(h2o_model, title=None, num_of_features=None):
 def compare_cont_dists(df_list: List[pd.DataFrame], variables=None, labels=None,
                        divisor_step=2, nsample=5000, nbins=50, all_=False,
                        sort_by='earth_mover', nvars=None, plot=True, plot_cdf=True,
-                       figsize=(7, 4), normalize_distance=True, path=None) -> tuple:
+                       figsize=(7, 4), normalize_distance=True, path=None, density=True) -> tuple:
     """
     Plots a list of dataframes on a list of continuous or numerical variables
     It compares the first two dataframes and sorts the order of graphs
@@ -181,10 +181,11 @@ def compare_cont_dists(df_list: List[pd.DataFrame], variables=None, labels=None,
             #histogramas
             bins = np.linspace(allvalues.min(), allvalues.max(), nbins)
             if all_:
-                _, _, _ = axes[ind_var, 0].hist(allvalues, bins=bins, density=True, label=['ambos'], alpha=0.5)
+                _, _, _ = axes[ind_var, 0].hist(allvalues, bins=bins, density=density, label=['ambos'], alpha=0.5)
 
             for df_index in range(ndf):
-                _, _, _ = axes[ind_var, 0].hist(values[df_index], bins=bins, alpha=0.5, density=True, label=labels[df_index])
+                _, _, _ = axes[ind_var, 0].hist(values[df_index], bins=bins, alpha=0.5, density=density,
+                                                label=labels[df_index])
 
             axes[ind_var, 0].legend()
             axes[ind_var, 0].set_title(var)
