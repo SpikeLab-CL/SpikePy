@@ -221,7 +221,8 @@ def compare_cont_dists(df_list: List[pd.DataFrame], variables=None, labels=None,
 
 
 def compare_categorical_dists(df1: pd.DataFrame, df2: pd.DataFrame, variables: List, labels=['df1', 'df2'],
-                              minimal_category_size=0.01, width=.97, nsample=5000, path=None):
+                              minimal_category_size=0.01, width=.97, nsample=5000, path=None,
+                              show_porc_diff=False):
     """
     Compares two distributions on a list of categorical variables
 
@@ -269,12 +270,13 @@ def compare_categorical_dists(df1: pd.DataFrame, df2: pd.DataFrame, variables: L
         props.plot(kind='bar', width=width, ax=axes[iv])
 
         axes[iv].set_title(var)
-        for i, p in enumerate(np.array(axes[iv].patches).reshape(2, -1).T):
-            diff = 100 * np.abs(props.iloc[i, 0] - props.iloc[i, 1]) / props.iloc[i].mean()
-            altura_max = max(p[0].get_height(), p[1].get_height())
+        if show_porc_diff:
+            for i, p in enumerate(np.array(axes[iv].patches).reshape(2, -1).T):
+                diff = 100 * np.abs(props.iloc[i, 0] - props.iloc[i, 1]) / props.iloc[i].mean()
+                altura_max = max(p[0].get_height(), p[1].get_height())
 
-            x = p[0].get_x()
-            axes[iv].annotate(f'{diff:.1f}%', (x, altura_max * 1.01))
+                x = p[0].get_x()
+                axes[iv].annotate(f'{diff:.1f}%', (x, altura_max * 1.01))
         axes[iv].grid(False)
     plt.tight_layout()
 
