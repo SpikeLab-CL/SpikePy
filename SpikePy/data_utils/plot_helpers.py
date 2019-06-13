@@ -164,6 +164,7 @@ def compare_cont_dists(df_list: List[pd.DataFrame], variables=None, labels=None,
             axes = axes.reshape((nvars, ncolumns))
         except:
             axes = np.array(axes)
+            axes = axes.reshape((nvars, ncolumns))
         if sort_by == 'earth_mover':
             em_dist.sort_values(by='metric', axis=1, ascending=False, inplace=True)
             vars_sort = em_dist.columns
