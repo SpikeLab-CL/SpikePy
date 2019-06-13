@@ -94,7 +94,8 @@ def plot_most_important_features(h2o_model, title=None, num_of_features=None):
 def compare_cont_dists(df_list: List[pd.DataFrame], variables=None, labels=None,
                        divisor_step=2, nsample=5000, nbins=50, all_=False,
                        sort_by='earth_mover', nvars=None, plot=True, plot_cdf=True,
-                       figsize=(7, 4), normalize_distance=True, path=None, density=True) -> tuple:
+                       figsize=(7, 4), normalize_distance=True, path=None, density=True,
+                       progress=True) -> tuple:
     """
     Plots a list of dataframes on a list of continuous or numerical variables
     It compares the first two dataframes and sorts the order of graphs
@@ -142,7 +143,12 @@ def compare_cont_dists(df_list: List[pd.DataFrame], variables=None, labels=None,
     pvalor_ks = pd.DataFrame(columns=variables, index=['metric'])
     em_dist = pvalor_ks.copy()
 
-    for var in progress_bar(list(variables)):
+    if progress:
+        iterator = progress_bar(list(variables))
+    else:
+        iterator = list(variables)
+
+    for var in iterator:
         nvalues = min([len(df_sample[i][var][df_sample[i][var].notna()].values.flatten()) for i in range(min(2, ndf))])
         if nvalues > 0:
             for df_index in range(min(2, ndf)):
@@ -172,7 +178,12 @@ def compare_cont_dists(df_list: List[pd.DataFrame], variables=None, labels=None,
         else:
             vars_sort = variables
 
-        for ind_var, var in progress_bar(list(enumerate(vars_sort))):
+        if progress:
+            iterator = progress_bar(list(enumerate(vars_sort)))
+        else:
+            iterator = list(enumerate(vars_sort))
+
+        for ind_var, var in iterator:
 
             for df_index in range(ndf):
                 values[df_index] = df_sample[df_index][var][df_sample[df_index][var].notna()].values.flatten()
