@@ -120,10 +120,10 @@ def compare_cont_dists(df_list: List[pd.DataFrame], variables=None, labels=None,
 
     :return: fig, axes, em_dist
     """
+
     if variables is None:
         variables = df_list[0].columns
 
-    ndf = len(df_list)
     if labels is None:
         labels = [f'df{df_index}' for df_index in range(ndf)]
 
@@ -132,7 +132,8 @@ def compare_cont_dists(df_list: List[pd.DataFrame], variables=None, labels=None,
         df = df_list[0]
         labels = df[groupby].unique()
         df_list = [df[df[groupby] == g] for g in labels]
-        print(len(df_list))
+
+    ndf = len(df_list)
 
     if plot_cdf:
         ncolumns = 2
