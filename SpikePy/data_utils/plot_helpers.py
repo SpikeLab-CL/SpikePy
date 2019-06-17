@@ -124,9 +124,6 @@ def compare_cont_dists(df_list: List[pd.DataFrame], variables=None, labels=None,
     if variables is None:
         variables = df_list[0].columns
 
-    if labels is None:
-        labels = [f'df{df_index}' for df_index in range(ndf)]
-
     if groupby is not None:
         assert len(df_list) == 1, "groupby != None solo funciona con un dataframe"
         df = df_list[0]
@@ -134,6 +131,9 @@ def compare_cont_dists(df_list: List[pd.DataFrame], variables=None, labels=None,
         df_list = [df[df[groupby] == g] for g in labels]
 
     ndf = len(df_list)
+
+    if labels is None:
+        labels = [f'df{df_index}' for df_index in range(ndf)]
 
     if plot_cdf:
         ncolumns = 2
