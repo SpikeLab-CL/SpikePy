@@ -95,7 +95,7 @@ def compare_cont_dists(df_list: List[pd.DataFrame], variables=None, labels=None,
                        divisor_step=2, nsample=5000, nbins=50, all_=False,
                        sort_by='earth_mover', nvars=None, plot=True, plot_cdf=True,
                        figsize=(7, 4), normalize_distance=True, path=None, density=True,
-                       progress=True) -> tuple:
+                       progress=True, groupby=None) -> tuple:
     """
     Plots a list of dataframes on a list of continuous or numerical variables
     It compares the first two dataframes and sorts the order of graphs
@@ -122,9 +122,16 @@ def compare_cont_dists(df_list: List[pd.DataFrame], variables=None, labels=None,
     """
     if variables is None:
         variables = df_list[0].columns
+
     ndf = len(df_list)
     if labels is None:
         labels = [f'df{df_index}' for df_index in range(ndf)]
+
+    if groupby is not None:
+        assert len(df_list) == 1, "groupby != None solo funciona con un dataframe"
+        df = df_list[0]
+        labels = df[groupby].unique()
+        df_list = [df[df[groupby] == g] for g in labels]
 
     if plot_cdf:
         ncolumns = 2
