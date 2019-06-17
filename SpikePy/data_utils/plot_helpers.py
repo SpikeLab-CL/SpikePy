@@ -132,6 +132,7 @@ def compare_cont_dists(df_list: List[pd.DataFrame], variables=None, labels=None,
         df = df_list[0]
         labels = df[groupby].unique()
         df_list = [df[df[groupby] == g] for g in labels]
+        print(len(df_list))
 
     if plot_cdf:
         ncolumns = 2
