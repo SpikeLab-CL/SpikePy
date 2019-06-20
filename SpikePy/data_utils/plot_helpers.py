@@ -200,12 +200,25 @@ def compare_cont_dists(df_list: List[pd.DataFrame], variables=None, labels=None,
 
             #histogramas
             bins = np.linspace(allvalues.min(), allvalues.max(), nbins)
+            bin_width = np.diff(bins).mean()
             if all_:
                 _, _, _ = axes[ind_var, 0].hist(allvalues, bins=bins, density=density, label=['ambos'], alpha=0.5)
 
             for df_index in range(ndf):
                 _, _, _ = axes[ind_var, 0].hist(values[df_index], bins=bins, alpha=0.5, density=density,
                                                 label=labels[df_index])
+
+            if density:
+                fig.canvas.draw()
+
+                yticks = [item.get_text() for item in axes[ind_var, 0].get_yticklabels()]
+
+                def float_minus(x):
+                    if type(x) == str:
+                        return float(x.replace('−', '-'))
+                    else: return x
+                yticks = [round(100 * float_minus(l) * bin_width, 1) for l in yticks]
+                axes[ind_var, 0].set_yticklabels(yticks)
 
             axes[ind_var, 0].legend()
             axes[ind_var, 0].set_title(var)
