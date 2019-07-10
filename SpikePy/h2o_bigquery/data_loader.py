@@ -7,16 +7,6 @@ import tempfile
 import shutil
 import subprocess
 import sys
-
-from google.cloud import bigquery
-from google.cloud import storage
-import uuid
-import h2o
-import logging
-import tempfile
-import shutil
-import subprocess
-import sys
 from datetime import datetime
 
 
@@ -186,7 +176,7 @@ class H2OBigQueryLoader():
                                                     mode="NULLABLE"))
             upload_job_config.schema = schema_
         upload_job_config.source_format = "CSV"
-        if append == False:
+        if append == True:
             upload_job_config.write_disposition = "WRITE_APPEND"
         else:
             upload_job_config.write_disposition = "WRITE_TRUNCATE"
@@ -217,7 +207,7 @@ class H2OBigQueryLoader():
             bq_col_types.append({"name":column, "type":schema_type})
         return bq_col_types
 
-    def upload_frame_to_bigquery(self, dataframe=None, destination_dataset=None, destination_table=None):
+    def upload_frame_to_bigquery(self, dataframe=None, destination_dataset=None, destination_table=None, append=True):
         """Loads data from BigQuery directly into H2O.
         Arguments:
             dataframe: H2OFrame with the data.
@@ -238,6 +228,6 @@ class H2OBigQueryLoader():
                                         destination_dataset=destination_dataset,
                                         destination_table=destination_table,
                                         schema=bq_schema,
-                                        append=True)
+                                        append=append)
         self._remove_temp_folder(temp_folder)
         self._remove_temporal_bucket(tmp_bucket)

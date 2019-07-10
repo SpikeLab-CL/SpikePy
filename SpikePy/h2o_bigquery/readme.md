@@ -45,6 +45,7 @@ loader = H2OBigQueryLoader(project_id="gcp_project")
 data = h2o.upload_file("sample_test.csv")
 loader.upload_frame_to_bigquery(dataframe=data, 
                                 destination_dataset="spike_tmp",
-                                destination_table="h2o_upload_table")
+                                destination_table="h2o_upload_table",
+                                append=True)
 h2o.cluster().shutdown()
 ```
