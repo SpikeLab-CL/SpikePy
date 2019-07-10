@@ -127,7 +127,7 @@ class H2OBigQueryLoader():
     def _convert_h2o_time_to_date(self, dataframe):
         time_cols = dataframe.columns_by_type(coltype="time")
         for col in time_cols:
-            d = data[int(col)].as_data_frame()/1000
+            d = dataframe[int(col)].as_data_frame()/1000
             col_name = d.columns[0]
             d[col_name] = d[[col_name]].apply(lambda x: datetime.utcfromtimestamp(x).strftime("%Y-%m-%d"), axis = 1)
             dataframe[col_name] = h2o.H2OFrame(d, column_types=["string"])
@@ -218,16 +218,22 @@ class H2OBigQueryLoader():
         #TODO: check if data_frame copy use too much memory for big datasets
         if (destination_dataset == None or destination_table==None):
             raise ValueError("No destination_dataset or destination_table provided")
-        original_col_order = dataframe.col_names
-        bq_schema = self._infer_bigquery_schema(dataframe, col_order=original_col_order)
-        dataframe = self._convert_h2o_time_to_date(dataframe)
-        exported_file, temp_folder = self._export_frame_to_temp_folder(dataframe)
-        tmp_bucket, storage_file_path = self._upload_file_to_storage(file_path=exported_file)
+        try:
+            original_col_order = dataframe.col_names
+            bq_schema = self._infer_bigquery_schema(dataframe, col_order=original_col_order)
+            dataframe = self._convert_h2o_time_to_date(dataframe)
+            exported_file, temp_folder = self._export_frame_to_temp_folder(dataframe)
+            tmp_bucket, storage_file_path = self._upload_file_to_storage(file_path=exported_file)
 
-        self._create_table_from_storage(storage_file_uris=storage_file_path, 
-                                        destination_dataset=destination_dataset,
-                                        destination_table=destination_table,
-                                        schema=bq_schema,
-                                        append=append)
-        self._remove_temp_folder(temp_folder)
-        self._remove_temporal_bucket(tmp_bucket)
+            self._create_table_from_storage(storage_file_uris=storage_file_path, 
+                                            destination_dataset=destination_dataset,
+                                            destination_table=destination_table,
+                                            schema=bq_schema,
+                                            append=append)
+            self._remove_temp_folder(temp_folder)
+            if tmp_bucket != None:
+                self._remove_temporal_bucket(tmp_bucket)
+        except Exception as e:
+            self._remove_temp_folder(temp_folder)
+            if tmp_bucket != None:
+                self._remove_temporal_bucket(tmp_bucket)
