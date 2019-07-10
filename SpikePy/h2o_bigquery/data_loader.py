@@ -8,6 +8,18 @@ import shutil
 import subprocess
 import sys
 
+from google.cloud import bigquery
+from google.cloud import storage
+import uuid
+import h2o
+import logging
+import tempfile
+import shutil
+import subprocess
+import sys
+from datetime import datetime
+
+
 class H2OBigQueryLoader():
     """Conector used to load data from H2O directly into BigQuery
     Arguments:
@@ -121,3 +133,111 @@ class H2OBigQueryLoader():
             if(query_job.errors != None):
                 raise RuntimeError(query_job.errors)
         return query_job
+    
+    def _convert_h2o_time_to_date(self, dataframe):
+        time_cols = dataframe.columns_by_type(coltype="time")
+        for col in time_cols:
+            d = data[int(col)].as_data_frame()/1000
+            col_name = d.columns[0]
+            d[col_name] = d[[col_name]].apply(lambda x: datetime.utcfromtimestamp(x).strftime("%Y-%m-%d"), axis = 1)
+            dataframe[col_name] = h2o.H2OFrame(d, column_types=["string"])
+        return dataframe
+    
+    def _export_frame_to_temp_folder(self, dataframe):
+        export_file_name = dataframe.frame_id+".csv"
+        temp_folder = tempfile.mkdtemp()
+        export_file_path = "{0}/{1}".format(temp_folder, export_file_name)
+        #TODO: Matias Aravena, permitir exportar en multiples archivos.
+        h2o.export_file(dataframe, path=export_file_path, force=True)
+        return export_file_path, temp_folder
+    
+    def _upload_file_to_storage(self, file_path=None, storage_path=None):
+        temporal_bucket = None
+        file_name = file_path.split("/")[-1]
+        if file_path == None:
+            raise ValueError("file_path is None")
+        if storage_path == None:
+            temporal_bucket = self._create_temporal_bucket()
+            storage_path = "gs://{0}/".format(temporal_bucket.name)
+        try:
+            subprocess.check_call(['gsutil','-q','cp', file_path, storage_path], stderr=sys.stdout)
+            return temporal_bucket, storage_path+file_name
+        except Exception as e:
+            if temporal_bucket != None:
+                self._remove_temporal_bucket(temporal_bucket)
+            raise RuntimeError("Couldn't upload the file {0} into Storage".format(file_path))
+
+    def _create_table_from_storage(self, storage_file_uris=None, 
+                                         destination_dataset=None,
+                                         destination_table=None,
+                                         schema=None,
+                                         append=False):
+        upload_job_config = bigquery.LoadJobConfig()
+        upload_job_config.skip_leading_rows = 1
+        upload_job_config.location = "US"
+        upload_job_config.create_disposition = "CREATE_IF_NEEDED"
+        if schema == None:
+            upload_job_config.autodetect = True
+        else:
+            schema_ = []
+            for field in schema:
+                schema_.append(bigquery.SchemaField(name=field['name'],
+                                                    field_type=field['type'],
+                                                    mode="NULLABLE"))
+            upload_job_config.schema = schema_
+        upload_job_config.source_format = "CSV"
+        if append == False:
+            upload_job_config.write_disposition = "WRITE_APPEND"
+        else:
+            upload_job_config.write_disposition = "WRITE_TRUNCATE"
+        table_ref = "{project}.{dataset}.{table}".format(project=self.project_id,
+                                                         dataset=destination_dataset,
+                                                         table=destination_table)
+        table_ref = bigquery.TableReference.from_string(table_ref)
+        load_job = bigquery.LoadJob(job_id=str(uuid.uuid1(10)),
+                                    source_uris=storage_file_uris,
+                                    destination=table_ref,
+                                    client=self.bigquery_client,
+                                    job_config=upload_job_config)
+        load_job.result()
+
+    def _infer_bigquery_schema(self, dataframe, col_order):
+        col_types = dataframe.types
+        bq_col_types = []
+        for column in col_order:
+            schema_type = "STRING" #default
+            if col_types[column] == "int":
+                schema_type = "INTEGER"
+            elif col_types[column] == "real":
+                schema_type = "FLOAT"
+            elif col_types[column] == "time":
+                schema_type = "DATE"
+            else:
+                schema_type == "STRING"
+            bq_col_types.append({"name":column, "type":schema_type})
+        return bq_col_types
+
+    def upload_frame_to_bigquery(self, dataframe=None, destination_dataset=None, destination_table=None):
+        """Loads data from BigQuery directly into H2O.
+        Arguments:
+            dataframe: H2OFrame with the data.
+            destination_dataset: str destination dataset used.
+            destination_table: str destination table used.
+        """
+        #dataframe_copy = h2o.deep_copy(dataframe, idx=uuid.uuid1(10))
+        #TODO: check if data_frame copy use too much memory for big datasets
+        if (destination_dataset == None or destination_table==None):
+            raise ValueError("No destination_dataset or destination_table provided")
+        original_col_order = dataframe.col_names
+        bq_schema = self._infer_bigquery_schema(dataframe, col_order=original_col_order)
+        dataframe = self._convert_h2o_time_to_date(dataframe)
+        exported_file, temp_folder = self._export_frame_to_temp_folder(dataframe)
+        tmp_bucket, storage_file_path = self._upload_file_to_storage(file_path=exported_file)
+
+        self._create_table_from_storage(storage_file_uris=storage_file_path, 
+                                        destination_dataset=destination_dataset,
+                                        destination_table=destination_table,
+                                        schema=bq_schema,
+                                        append=True)
+        self._remove_temp_folder(temp_folder)
+        self._remove_temporal_bucket(tmp_bucket)
