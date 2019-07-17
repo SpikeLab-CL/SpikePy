@@ -8,7 +8,7 @@ import shutil
 import subprocess
 import sys
 from datetime import datetime
-
+import time
 
 class H2OBigQueryLoader():
     """Conector used to load data from H2O directly into BigQuery
@@ -46,33 +46,38 @@ class H2OBigQueryLoader():
         else:
             delete_dataset = False
             if (destination_dataset == None or destination_table == None):
-                destination_dataset = "temp_dataset_{0}".format(uuid.uuid1(5))
-                destination_table = "temp_table_{0}".format(uuid.uuid1(5))
+                destination_dataset = "temp_dataset_{0}".format(uuid.uuid1(5)).replace("-","_")
+                destination_table = "temp_table_{0}".format(uuid.uuid1(5)).replace("-","_")
+                self.bigquery_client.create_dataset(bigquery.Dataset(self.bigquery_client.dataset(destination_dataset)))
                 delete_dataset = True
 
             query_job_config = bigquery.QueryJobConfig()
             query_job_config.create_disposition = "CREATE_IF_NEEDED"
             query_job_config.write_disposition = "WRITE_TRUNCATE"
-            query_job_config.destination = "{project}.{dataset}.{table}".format(project=self.project_id,
-                                                                                dataset=destination_dataset,
-                                                                                table=destination_table)
+
+            dataset_ref = bigquery.DatasetReference(project=self.project_id,dataset_id=destination_dataset)
+            table_ref = bigquery.TableReference(dataset_ref=dataset_ref,table_id=destination_table)
+
+            query_job_config.destination = table_ref
             query_job = self.bigquery_client.query(query=query, job_config=query_job_config)
+            query_job.done()
+            time.sleep(15)
             job_results = self._check_query_job(query_job)
-            table_ref = job_results.destination
             bucket = self._create_temporal_bucket()
             files_uri = self._export_result_to_storage(table_ref=table_ref, destination_bucket=bucket)
             temp_folder, files_regex = self._download_files_from_storage(files_uri=files_uri)
+            loaded_data = h2o.import_file(path=temp_folder+"/",pattern = ".*\.csv.gz")
             try:
-                loaded_data = h2o.import_file(path=temp_folder+"/",pattern = ".*\.csv.gz")
                 self._remove_temporal_bucket(bucket)
                 self._remove_temp_folder(path=temp_folder)
                 dataset_ref = self.bigquery_client.dataset(destination_dataset)
                 dataset = bigquery.Dataset(dataset_ref)
                 if delete_dataset:
-                    self.bigquery_client.delete_dataset(dataset)
-                return loaded_data
+                    time.sleep(30) #just in case the export didn't finished yet
+                    self.bigquery_client.delete_dataset(dataset, delete_contents=True)
             except Exception as e:
                 logging.error(e)
+            return loaded_data
 
     def _remove_temp_folder(self, path):
         try:
@@ -91,6 +96,8 @@ class H2OBigQueryLoader():
                                                          destination_uris=files_uris,
                                                          location="US",
                                                          job_config=extract_job_config)
+        extract_job.done()
+        time.sleep(15)                                
         extract_job_result = extract_job.result()
         if(extract_job_result.errors != None):
                 raise RuntimeError(extract_job_result.errors)
@@ -106,7 +113,7 @@ class H2OBigQueryLoader():
         return temp_folder, files_regex
 
     def _create_temporal_bucket(self):
-        temporal_bucket_name = "temp_spike_{0}".format(uuid.uuid1(10))
+        temporal_bucket_name = "temp_spike_{0}".format(uuid.uuid1(10)).replace("-","_")
         bucket = storage.Bucket(client=self.storage_client, name=temporal_bucket_name)
         bucket.location = "us"
         bucket = self.storage_client.create_bucket(bucket)
