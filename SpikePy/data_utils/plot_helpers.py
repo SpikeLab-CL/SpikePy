@@ -305,11 +305,11 @@ def compare_categorical_dists(df1: pd.DataFrame, df2: pd.DataFrame, variables: L
         axes[iv].set_title(var)
         if show_porc_diff:
             for i, p in enumerate(np.array(axes[iv].patches).reshape(2, -1).T):
-                diff = 100 * np.abs(props.iloc[i, 0] - props.iloc[i, 1]) / props.iloc[i].mean()
+                diff = 100 * np.abs(props.iloc[i, 0] - props.iloc[i, 1])
                 altura_max = max(p[0].get_height(), p[1].get_height())
 
                 x = p[0].get_x()
-                axes[iv].annotate(f'{diff:.1f}%', (x, altura_max * 1.01))
+                axes[iv].annotate(f'{diff:.1f}', (x, altura_max * 1.01))
         axes[iv].grid(False)
     plt.tight_layout()
 
