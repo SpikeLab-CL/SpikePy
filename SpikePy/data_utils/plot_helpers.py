@@ -390,7 +390,11 @@ def pdplot(df: pd.DataFrame, variables: List, target: str, numeric: bool,
 
         lower_conf = {}
         upper_conf = {}
-        for q in confidence_q + [sort_q]:
+        if sort_q != 'mean':
+            quantiles = confidence_q + [sort_q]
+        else:
+            quantiles = confidence_q
+        for q in quantiles:
             factor_confidence = -norm.ppf((1-q)/2)
             lower_conf[q] = mean_effect - factor_confidence * np.sqrt(variance / size)
             upper_conf[q] = mean_effect + factor_confidence * np.sqrt(variance / size)
@@ -401,7 +405,10 @@ def pdplot(df: pd.DataFrame, variables: List, target: str, numeric: bool,
         if numeric:
             sort_categories = quant_interval
         else:
-            sort_categories = list(lower_conf[sort_q].sort_values(ascending=False).index)[:ncategories]
+            if sort_q != 'mean':
+                sort_categories = list(lower_conf[sort_q].sort_values(ascending=False).index)[:ncategories]
+            else:
+                sort_categories = list(mean_effect.sort_values(ascending=False).index)[:ncategories]
 
         mean_effect = factor * pd.DataFrame(mean_effect[sort_categories])
         mean_effect.rename(columns={0: name}, inplace=True)
