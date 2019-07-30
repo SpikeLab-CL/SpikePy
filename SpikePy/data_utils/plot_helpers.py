@@ -307,7 +307,6 @@ def compare_categorical_dists(df1: pd.DataFrame, df2: pd.DataFrame, variables: L
             for i, p in enumerate(np.array(axes[iv].patches).reshape(2, -1).T):
                 diff = 100 * np.abs(props.iloc[i, 0] - props.iloc[i, 1])
                 altura_max = max(p[0].get_height(), p[1].get_height())
-
                 x = p[0].get_x()
                 axes[iv].annotate(f'{diff:.1f}', (x, altura_max * 1.01))
         axes[iv].grid(False)
@@ -321,7 +320,9 @@ def compare_categorical_dists(df1: pd.DataFrame, df2: pd.DataFrame, variables: L
 
 def pdplot(df: pd.DataFrame, variables: List, target: str, numeric: bool,
            pos_class=1, nsample=1_000_000, nbins=100, size_subplot=(15, 7),
-           confidence_q=[.95], sort_q=.3, ncategories=100, target_type='classification') -> tuple:
+           confidence_q=[.95], sort_q=.3, ncategories=100,
+           show_data_size = True,
+           target_type='classification', min_max_ylim=False) -> tuple:
     """
     Partial dependency plot for a categorical target variable.
     For now, all variables must be either all numerical or all categorical
@@ -342,7 +343,7 @@ def pdplot(df: pd.DataFrame, variables: List, target: str, numeric: bool,
     def npenetracion(df_, target_, pos_class_):
         return len(df_[df_[target_] == pos_class_])
 
-    df_sample = df.sample(min(nsample, len(df)))
+    df_sample = df[variables + [target]].sample(min(nsample, len(df)))
     fig, axes = plt.subplots(len(variables),
                              figsize=(size_subplot[0], size_subplot[1] * len(variables)))
 
@@ -357,25 +358,17 @@ def pdplot(df: pd.DataFrame, variables: List, target: str, numeric: bool,
         global_effect = (df_sample[target]).mean()
         factor = 1
 
+    if min_max_ylim:
+        for iv, var in enumerate(variables):
+            axes[iv].set_ylim(df_sample[target].min(), df_sample[target].max())
+
 
     for iv, var in progress_bar(list(enumerate(variables))):
         axes[iv].axhline(y=global_effect, linestyle='--', color='k')
         #transform numerical variables in categoricals (bins)
         if numeric:
-            values = df_sample[var].values
-            values = values[~np.isnan(values)]
-            quantiles = (list(np.unique(np.quantile(
-                              values, q=(1 / nbins) * np.arange(1, nbins)))))
-            min_df = np.min(values)
-            max_df = np.max(values)
-            rango = max_df - min_df
-            eps = .001 * rango
-            quantiles = np.array([min_df - eps] + quantiles + [max_df + eps])
-            quant_interval = np.array([f'({quantiles[i]:.2f}, {quantiles[i + 1]:.2f}]'
-                                       for i in range(len(quantiles) - 1)])
-            cdf_values = ECDF(quantiles)(values)
-            index_quantile = rankdata(cdf_values, method='dense') - 1
-            df_sample[var] = quant_interval[index_quantile]
+            df_sample[var] = pd.cut(df_sample[var], bins=nbins, right=False)
+            quant_interval = df_sample[var].unique()
 
         size = df_sample[var].value_counts()
         if target_type == 'classification':
@@ -386,7 +379,6 @@ def pdplot(df: pd.DataFrame, variables: List, target: str, numeric: bool,
         elif target_type == 'regression':
             mean_effect = df_sample.groupby(var)[target].mean()
             variance = df_sample.groupby(var)[target].var()
-
 
         lower_conf = {}
         upper_conf = {}
@@ -403,7 +395,7 @@ def pdplot(df: pd.DataFrame, variables: List, target: str, numeric: bool,
                 upper_conf[q] = factor * np.minimum(upper_conf[q], 1)
 
         if numeric:
-            sort_categories = quant_interval
+            sort_categories = quant_interval.sort_values()
         else:
             if sort_q != 'mean':
                 sort_categories = list(lower_conf[sort_q].sort_values(ascending=False).index)[:ncategories]
@@ -413,10 +405,20 @@ def pdplot(df: pd.DataFrame, variables: List, target: str, numeric: bool,
         mean_effect = factor * pd.DataFrame(mean_effect[sort_categories])
         mean_effect.rename(columns={0: name}, inplace=True)
         mean_effect.plot(ax=axes[iv], kind='bar')
+        if show_data_size:
+            for i, p in enumerate(axes[iv].patches):
+                hight = p.get_height()
+                x = p.get_x()
+                ndatos = (df_sample[var] == sort_categories[i]).sum()
+                axes[iv].annotate(f'{ndatos} datos', (x, hight * 1.01))
+
         for q in confidence_q:
             axes[iv].fill_between(range(len(sort_categories)), lower_conf[q][sort_categories].values,
                                   upper_conf[q][sort_categories].values,
                                   alpha=0.5, label=f'{100 * q} %')
+
+
+
         axes[iv].set_ylabel(ylabel)
         axes[iv].set_title(var)
         axes[iv].grid(False)
