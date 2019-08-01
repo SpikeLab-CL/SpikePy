@@ -9,8 +9,8 @@ from scipy.stats import rankdata
 from typing import List
 from scipy.stats import norm
 from scipy.stats import wasserstein_distance as em_distance
-
-
+import h2o
+from h2o.estimators.random_forest import H2ORandomForestEstimator
 
 def plot_confusion_matrix(cm, classes,
                           normalize=False,
@@ -321,8 +321,9 @@ def compare_categorical_dists(df1: pd.DataFrame, df2: pd.DataFrame, variables: L
 def pdplot(df: pd.DataFrame, variables: List, target: str, numeric: bool,
            pos_class=1, nsample=1_000_000, nbins=100, size_subplot=(15, 7),
            confidence_q=[.95], sort_q=.3, ncategories=100,
-           show_data_size = True,
-           target_type='classification', min_max_ylim=False) -> tuple:
+           show_data_size=False,
+           target_type='classification', min_max_ylim=False,
+           train_random_forest=False) -> tuple:
     """
     Partial dependency plot for a categorical target variable.
     For now, all variables must be either all numerical or all categorical
@@ -340,6 +341,7 @@ def pdplot(df: pd.DataFrame, variables: List, target: str, numeric: bool,
     :param target_type: classification or regression target
     :return:
     """
+
     def npenetracion(df_, target_, pos_class_):
         return len(df_[df_[target_] == pos_class_])
 
@@ -362,8 +364,24 @@ def pdplot(df: pd.DataFrame, variables: List, target: str, numeric: bool,
         for iv, var in enumerate(variables):
             axes[iv].set_ylim(df_sample[target].min(), df_sample[target].max())
 
+    if train_random_forest:
+        h2o.init(port=54321, nthreads=-1)
+        rf = H2ORandomForestEstimator(balance_classes=True)
+        df_h2o = h2o.H2OFrame(df[variables + [target]])
+        if target_type == 'classification':
+            df_h2o[target] = df_h2o[target].asfactor()
+        if numeric:
+            for v in variables:
+                df_h2o[v] = df_h2o[v].asnumeric()
+        else:
+            for v in variables:
+                df_h2o[v] = df_h2o[v].asfactor()
+        rf.train(variables, target, df_h2o)
+        sort_variables = [x[0] for x in rf.varimp()]
+    else:
+        sort_variables = variables
 
-    for iv, var in progress_bar(list(enumerate(variables))):
+    for iv, var in progress_bar(list(enumerate(sort_variables))):
         axes[iv].axhline(y=global_effect, linestyle='--', color='k')
         #transform numerical variables in categoricals (bins)
         if numeric:
