@@ -159,13 +159,15 @@ def compare_cont_dists(df_list: List[pd.DataFrame], variables=None, labels=None,
         iterator = list(variables)
 
     for var in iterator:
+        min_value = min([df_sample[i][var].min() for i in range(ndf)])
+        max_value = max([df_sample[i][var].max() for i in range(ndf)])
         nvalues = min([len(df_sample[i][var][df_sample[i][var].notna()].values.flatten()) for i in range(min(2, ndf))])
         if nvalues > 0:
             for df_index in range(min(2, ndf)):
                 values[df_index] = df_sample[df_index][var][df_sample[df_index][var].notna()].values.flatten()
                 if normalize_distance is True:
-                    values[df_index] = ((values[df_index] - values[df_index].min()) /
-                                        (values[df_index].max() - values[df_index].min()))
+                    values[df_index] = ((values[df_index] - min_value) /
+                                        (max_value - min_value))
 
             if len(values.keys()) > 1:
                 pvalor_ks.loc['metric', var] = ks_2samp(values[0], values[1]).pvalue
