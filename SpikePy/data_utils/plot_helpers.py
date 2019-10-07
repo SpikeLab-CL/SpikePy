@@ -118,6 +118,8 @@ def compare_cont_dists(df_list: List[pd.DataFrame], variables=None, labels=None,
     :param plot_cdf: if True it plots the cdf
     :param normalize_distance: transform variables to [0,1] to compute the sort metric
     :param figsize: tuple of fig size
+    :param xlim: tuple or list for histogram x lim
+
 
     :return: fig, axes, em_dist
     """
