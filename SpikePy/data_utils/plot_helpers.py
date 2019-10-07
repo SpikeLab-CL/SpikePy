@@ -96,7 +96,7 @@ def compare_cont_dists(df_list: List[pd.DataFrame], variables=None, labels=None,
                        divisor_step=2, nsample=5000, nbins=50, all_=False,
                        sort_by='earth_mover', nvars=None, plot=True, plot_cdf=True,
                        figsize=(7, 4), normalize_distance=True, path=None, density=True,
-                       progress=True, groupby=None, kde=False) -> tuple:
+                       progress=True, groupby=None, kde=False, xlim=None) -> tuple:
     """
     Plots a list of dataframes on a list of continuous or numerical variables
     It compares the first two dataframes and sorts the order of graphs
@@ -220,6 +220,8 @@ def compare_cont_dists(df_list: List[pd.DataFrame], variables=None, labels=None,
                 for df_index in range(ndf):
                     _, _, _ = axes[ind_var, 0].hist(values[df_index], bins=bins, alpha=0.5, density=density,
                                                     label=labels[df_index])
+                if xlim is not None:
+                    axes[ind_var, 0].set_xlim(xlim[0], xlim[1])
 
                 if density:
                     fig.canvas.draw()
@@ -227,8 +229,7 @@ def compare_cont_dists(df_list: List[pd.DataFrame], variables=None, labels=None,
                     yticks = [item.get_text() for item in axes[ind_var, 0].get_yticklabels()]
 
                     def float_minus(x):
-                        if type(x) == str:
-                            return float(x.replace('−', '-'))
+                        if type(x) == str: return float(x.replace('−', '-'))
                         else: return x
                     yticks = [round(100 * float_minus(l) * bin_width, 1) for l in yticks]
                     axes[ind_var, 0].set_yticklabels(yticks)
