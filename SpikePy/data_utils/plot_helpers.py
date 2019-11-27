@@ -93,7 +93,7 @@ def plot_most_important_features(h2o_model, title=None, num_of_features=None):
 
 
 def compare_cont_dists(df_list: List[pd.DataFrame], variables=None, labels=None,
-                       divisor_step=2, nsample=5000, nbins=50, all_=False,
+                       steps=50, nsample=5000, nbins=50, all_=False,
                        sort_by='earth_mover', nvars=None, plot=True, plot_cdf=True,
                        figsize=(7, 4), normalize_distance=True, path=None, density=True,
                        progress=True, groupby=None, kde=False, xlim=None) -> tuple:
@@ -242,11 +242,9 @@ def compare_cont_dists(df_list: List[pd.DataFrame], variables=None, labels=None,
 
             if plot_cdf:
                 # cdf
-                diff = abs(np.diff(allvalues))
-                steps = diff[diff > 0].min() / divisor_step
                 start = allvalues.min()
                 stop = allvalues.max()
-                x = np.arange(start, stop, steps)
+                x = np.linspace(start, stop, steps)
 
                 for df_index in range(ndf):
                     ecdf[df_index] = ECDF(values[df_index])
