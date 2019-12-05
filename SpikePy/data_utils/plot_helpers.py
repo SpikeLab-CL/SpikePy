@@ -399,8 +399,8 @@ def pdplot(df: pd.DataFrame, variables: List, target: str, numeric: bool,
         axes[iv].axhline(y=global_effect, linestyle='--', color='k')
         #transform numerical variables in categoricals (bins)
         if numeric:
-            df_sample[var] = pd.cut(df_sample[var], bins=nbins, right=False)
-            quant_interval = df_sample[var].unique()
+            df_sample[var] = pd.cut(df_sample[var].dropna(), bins=nbins, right=False)
+            quant_interval = df_sample[var].dropna().unique()
 
         size = df_sample[var].value_counts()
         if target_type == 'classification':
