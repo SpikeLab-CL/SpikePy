@@ -416,7 +416,7 @@ def pdplot(df: pd.DataFrame, variables: List, target: str, numeric: bool,
 
         lower_conf = {}
         upper_conf = {}
-        if sort_by != 'mean' and sort_by is not None:
+        if sort_by != 'mean' and sort_by is not None and not isinstance(sort_by, dict):
             quantiles = confidence_q + [sort_by]
         else:
             quantiles = confidence_q
@@ -431,12 +431,15 @@ def pdplot(df: pd.DataFrame, variables: List, target: str, numeric: bool,
         if numeric:
             sort_categories = quant_interval.sort_values()
         else:
-            if sort_by != 'mean' and sort_by is not None:
+            if sort_by != 'mean' and sort_by is not None and not isinstance(sort_by, dict):
                 sort_categories = list(lower_conf[sort_by].sort_values(ascending=False).index)[:ncategories]
             elif sort_by == 'mean':
                 sort_categories = list(mean_effect.sort_values(ascending=False).index)[:ncategories]
+            elif isinstance(sort_by, dict):
+                if var in sort_by.keys():
+                    sort_categories = sort_by[var]
             else:
-                sort_categories = df_sample[var].unique()
+                sort_categories = df_sample[var].dropna().unique()
 
         mean_effect = factor * pd.DataFrame(mean_effect[sort_categories])
         mean_effect.rename(columns={0: name}, inplace=True)
