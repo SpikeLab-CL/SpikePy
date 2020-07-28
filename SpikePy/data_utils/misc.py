@@ -39,3 +39,23 @@ def shutdown(minutes):
 	Shutdowns machine in given amount of minutes
 	"""
 	os.system("sudo shutdown -h +{0}".format(minutes))
+
+
+def modify_string_from_dict(string: str, replacements: dict):
+	for key, value in replacements.items():
+		string.replace(key, value)
+	return string
+
+
+def modify_file(input_name: str, replacements: dict, path="./"):
+	"""
+	Modifies file in place with a dictionary of string replacements
+	"""
+	with open(path + input_name, 'r') as file:
+		filedata = file.read()
+	
+	modified_filedata = modify_string_from_dict(filedata, replacements)
+
+	return modified_filedata
+
+
