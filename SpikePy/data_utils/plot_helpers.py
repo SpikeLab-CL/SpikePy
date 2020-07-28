@@ -93,7 +93,7 @@ def plot_most_important_features(h2o_model, title=None, num_of_features=None):
 
 
 def compare_cont_dists(df_list: List[pd.DataFrame], variables=None, labels=None,
-                       divisor_step=2, nsample=5000, nbins=50, all_=False,
+                       steps=50, nsample=5000, nbins=50, all_=False,
                        sort_by='earth_mover', nvars=None, plot=True, plot_cdf=True,
                        figsize=(7, 4), normalize_distance=True, path=None, density=True,
                        progress=True, groupby=None, kde=False, xlim=None) -> tuple:
@@ -242,11 +242,9 @@ def compare_cont_dists(df_list: List[pd.DataFrame], variables=None, labels=None,
 
             if plot_cdf:
                 # cdf
-                diff = abs(np.diff(allvalues))
-                steps = diff[diff > 0].min() / divisor_step
                 start = allvalues.min()
                 stop = allvalues.max()
-                x = np.arange(start, stop, steps)
+                x = np.linspace(start, stop, steps)
 
                 for df_index in range(ndf):
                     ecdf[df_index] = ECDF(values[df_index])
@@ -336,7 +334,7 @@ def compare_categorical_dists(df1: pd.DataFrame, df2: pd.DataFrame, variables: L
 
 def pdplot(df: pd.DataFrame, variables: List, target: str, numeric: bool,
            pos_class=1, nsample=1_000_000, nbins=100, size_subplot=(15, 7),
-           confidence_q=[.95], sort_q=.3, ncategories=100,
+           confidence_q=[.95], sort_by=.3, ncategories=100,
            show_data_size=False,
            target_type='classification', min_max_ylim=False,
            train_random_forest=False) -> tuple:
@@ -364,6 +362,8 @@ def pdplot(df: pd.DataFrame, variables: List, target: str, numeric: bool,
     df_sample = df[variables + [target]].sample(min(nsample, len(df)))
     fig, axes = plt.subplots(len(variables),
                              figsize=(size_subplot[0], size_subplot[1] * len(variables)))
+    if len(variables) == 1:
+        axes = [axes]
 
     if target_type == 'classification':
         name = 'prob'
@@ -401,8 +401,8 @@ def pdplot(df: pd.DataFrame, variables: List, target: str, numeric: bool,
         axes[iv].axhline(y=global_effect, linestyle='--', color='k')
         #transform numerical variables in categoricals (bins)
         if numeric:
-            df_sample[var] = pd.cut(df_sample[var], bins=nbins, right=False)
-            quant_interval = df_sample[var].unique()
+            df_sample[var] = pd.cut(df_sample[var].dropna(), bins=nbins, right=False)
+            quant_interval = df_sample[var].dropna().unique()
 
         size = df_sample[var].value_counts()
         if target_type == 'classification':
@@ -416,8 +416,8 @@ def pdplot(df: pd.DataFrame, variables: List, target: str, numeric: bool,
 
         lower_conf = {}
         upper_conf = {}
-        if sort_q != 'mean':
-            quantiles = confidence_q + [sort_q]
+        if sort_by != 'mean' and sort_by is not None and not isinstance(sort_by, dict):
+            quantiles = confidence_q + [sort_by]
         else:
             quantiles = confidence_q
         for q in quantiles:
@@ -431,10 +431,15 @@ def pdplot(df: pd.DataFrame, variables: List, target: str, numeric: bool,
         if numeric:
             sort_categories = quant_interval.sort_values()
         else:
-            if sort_q != 'mean':
-                sort_categories = list(lower_conf[sort_q].sort_values(ascending=False).index)[:ncategories]
-            else:
+            if sort_by != 'mean' and sort_by is not None and not isinstance(sort_by, dict):
+                sort_categories = list(lower_conf[sort_by].sort_values(ascending=False).index)[:ncategories]
+            elif sort_by == 'mean':
                 sort_categories = list(mean_effect.sort_values(ascending=False).index)[:ncategories]
+            elif isinstance(sort_by, dict):
+                if var in sort_by.keys():
+                    sort_categories = sort_by[var]
+            else:
+                sort_categories = df_sample[var].dropna().unique()
 
         mean_effect = factor * pd.DataFrame(mean_effect[sort_categories])
         mean_effect.rename(columns={0: name}, inplace=True)
@@ -457,6 +462,7 @@ def pdplot(df: pd.DataFrame, variables: List, target: str, numeric: bool,
         axes[iv].set_title(var)
         axes[iv].grid(False)
         axes[iv].legend()
+    
     plt.tight_layout()
 
     return fig, axes
