@@ -43,7 +43,7 @@ def shutdown(minutes):
 
 def modify_string_from_dict(string: str, replacements: dict):
 	for key, value in replacements.items():
-		string.replace(key, value)
+		string = string.replace(key, value)
 	return string
 
 
